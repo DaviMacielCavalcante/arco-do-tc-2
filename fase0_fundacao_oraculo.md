@@ -1,7 +1,7 @@
 # Fase 0 — Fundação + oráculo (guia detalhado)
 
 **Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Base técnica:** `analise_ferramenta_uschema.md`
-**Responsáveis:** Davi + João · **Prioridade:** imediata (pré-requisito de todas as fases)
+**Entregável:** fundação + oráculo (trabalho compartilhado) · **Prioridade:** imediata (pré-requisito de todas as fases)
 
 ## Objetivo
 

@@ -80,7 +80,7 @@ Decisão central: **um único núcleo de inferência compartilhado** pelos dois 
 
 O risco é **tempo**, não impossibilidade. Com a metacamada fora do caminho crítico, a estimativa de 4–6 pessoa-meses registrada na avaliação inicial (jun/2026) deixa de ser "não cabe" e passa a ser **plausível como o próprio TCC**, com dois autores em 6 meses.
 
-- **Paralelização:** Davi no núcleo de inferência (Fase 1), João nos extratores + um paradigma (Fase 2) — encontro pelo formato da tripla.
+- **Paralelização:** o núcleo de inferência (Fase 1) e os extratores + um paradigma (Fase 2) avançam **em paralelo**, encontrando-se pelo formato da tripla. O trabalho é **compartilhado** entre os dois autores, sem dono fixo por fase.
 - **Watch-items de fidelidade** (reproduzíveis, exigem cuidado): o **Inflector** (capitalização/pluralização dos nomes de entidade tem de casar — há libs de inflection em Python, mas talvez seja preciso reproduzir as regras exatas); o **determinismo** (ordenação de campos, `equals` estrutural, ordem das variações); e a natureza **estrutural-não-byte** da comparação de XMI.
 
 ---

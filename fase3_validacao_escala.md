@@ -1,7 +1,7 @@
 # Fase 3 — Ponta a ponta + escala + correções por construção (guia detalhado)
 
 **Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Resultados de referência:** `resultado_mongodb.md`, `resultado_neo4j.md`, `resultado_bug8_subcontagem_user.md`
-**Responsáveis:** Davi + João · **Pré-requisito:** Fases 1 e 2 com gates fechados
+**Entregável:** validação ponta a ponta + escala · **Pré-requisito:** Fases 1 e 2 com gates fechados
 
 ## Objetivo
 

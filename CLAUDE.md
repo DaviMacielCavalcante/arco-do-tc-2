@@ -167,4 +167,4 @@ SonarQube Cloud via <https://sonarcloud.io>).
 - **`ArraySC.__eq__` ignora o tamanho do array** (decisão deliberada do autor original, na origem do bug #8) — replicar essa noção **junto** com a correção `combineMetadata` ao colapsar variações.
 - **Bugs corrigidos por construção** (o original corrigia por patch): **#6** `_id` genérico (não assumir `ObjectId`), **#7** array vazio (checar `len==0` antes de `inners[0]`), **#8** contagem sob array de tamanho variável (combinar `meta` ao colapsar). Onde um teste JUnit codificava o bug, afirme o valor **corrigido**.
 - **Fora de escopo** (não portar): backends `cassandra`/`hbase`/`redis`/`sql`; OCL (ausente no metamodelo); codegen EMF; editor Sirius (UI). A **metacamada** é trabalho futuro.
-- **Paralelismo do time:** Davi no núcleo de inferência (Fase 1), João nos extratores (Fase 2); encontram-se no formato da tripla (`extractors/triple.py`).
+- **Paralelismo do time:** a Fase 1 (núcleo de inferência) e a Fase 2 (extratores) avançam em paralelo e se encontram no formato da tripla (`extractors/triple.py`); o trabalho é compartilhado entre os autores, sem dono fixo por fase.
