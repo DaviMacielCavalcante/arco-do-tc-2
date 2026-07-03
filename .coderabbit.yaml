@@ -1,0 +1,61 @@
+# Configuração do CodeRabbit (https://docs.coderabbit.ai).
+# Requer instalar o GitHub App do CodeRabbit no repositório (grátis p/ repos
+# públicos): https://github.com/apps/coderabbitai — este arquivo só ajusta o
+# comportamento da revisão às convenções do projeto (ver CLAUDE.md).
+language: pt-BR
+
+reviews:
+  profile: chill              # revisão focada; "assertive" pega mais nits
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false             # não revisa PRs em rascunho
+    base_branches:
+      - main
+
+  # Instruções por caminho — o CodeRabbit as usa como critério de revisão.
+  path_instructions:
+    - path: "src/**/*.py"
+      instructions: >
+        Código Python 3.12. Exija type hints em TODAS as assinaturas
+        (parâmetros e retorno) e docstrings em estilo NumPy
+        (Parameters/Returns/Raises/Examples). Linha máx. 100 colunas.
+        Prefira composição a herança e funções puras para transformações;
+        classes só para estado real ou design por protocolo. Aponte qualquer
+        `# type: ignore` sem justificativa.
+    - path: "src/uschema/intermediate/**"
+      instructions: >
+        Ponto de fidelidade *load-bearing*: a igualdade estrutural
+        (`__eq__`/`__hash__`) tem de casar com o Java. `ArraySC` IGNORA o
+        tamanho do array de propósito (origem do bug #8). Sinalize divergências
+        na semântica de igualdade, ordenação de campos ou `combineMetadata`.
+    - path: "src/uschema/inference/**"
+      instructions: >
+        Núcleo de inferência. A ORDEM das etapas do pipeline é fiel ao original
+        e não deve ser reordenada. Bugs corrigidos por construção: #6 (`_id`
+        genérico, não assumir ObjectId), #7 (checar `len==0` antes de
+        `inners[0]`), #8 (combinar `meta` ao colapsar variações). Onde um teste
+        codificava o bug, o valor esperado é o CORRIGIDO.
+    - path: "src/uschema/extractors/**"
+      instructions: >
+        Extratores PySpark: só RDD de baixo nível (map/reduceByKey/flatMap),
+        sem DataFrame SQL. Trate #6 (`_id` genérico) e #7 (array vazio) na
+        origem da assinatura. Preserve a semântica de `count` de
+        RelationshipType (entidades de origem, não arestas brutas).
+    - path: "tests/**/*.py"
+      instructions: >
+        Não exija docstrings. Prefira `@pytest.mark.parametrize` a loops e
+        fixtures a setup/teardown. Todo teste deve levar um marker: `unit`
+        (rápido), `spark` ou `integration`. Testes de extrator PySpark →
+        `@pytest.mark.spark`.
+
+  tools:
+    ruff:
+      enabled: true            # reaproveita a config de ruff do pyproject.toml
+
+chat:
+  auto_reply: true

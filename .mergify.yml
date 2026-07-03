@@ -1,0 +1,44 @@
+# Mergify — bot de merge automático (https://docs.mergify.com).
+# Requer instalar o app no repo: https://github.com/apps/mergify
+#
+# Espelha a proteção da branch `main`: 1 review aprovado + checks `quality`
+# e `SonarCloud Code Analysis` (quality gate) verdes + conversas resolvidas.
+# Merge por SQUASH, porque o repo exige histórico linear. O Mergify valida
+# este arquivo e comenta no 1º PR se algo estiver fora do schema.
+
+queue_rules:
+  - name: default
+    merge_method: squash
+    queue_conditions:
+      - base = main
+      - "#approved-reviews-by >= 1"
+      - "#review-threads-unresolved = 0"
+      - check-success = quality
+      - check-success = "SonarCloud Code Analysis"
+      - -draft
+    merge_conditions:
+      - check-success = quality
+      - check-success = "SonarCloud Code Analysis"
+
+pull_request_rules:
+  - name: Enfileira PRs aprovados e verdes
+    conditions:
+      - base = main
+      - "#approved-reviews-by >= 1"
+      - "#review-threads-unresolved = 0"
+      - check-success = quality
+      - check-success = "SonarCloud Code Analysis"
+      - -draft
+    actions:
+      queue:
+        name: default
+
+  - name: Avisa sobre conflito com a main
+    conditions:
+      - conflict
+      - -closed
+    actions:
+      comment:
+        message: >
+          @{{author}} este PR está com conflito com a `main` e precisa de
+          rebase antes de entrar na fila de merge. 🙏

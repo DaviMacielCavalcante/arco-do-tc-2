@@ -1,0 +1,71 @@
+# Hooks de qualidade em duas camadas.
+# Instale (uma vez, ativa os dois tipos de hook):
+#   uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+# Rode em tudo:
+#   uv run pre-commit run --all-files
+#
+# ruff e mypy usam `uv run` (repo: local) para casar exatamente com as versões
+# travadas no uv.lock — sem drift entre o hook e o ambiente do projeto.
+#
+# Camadas (ver "Quality gates" no CLAUDE.md):
+#   pre-commit (todo commit): higiene + ruff + mypy + testes RÁPIDOS (sem Spark)
+#   pre-push   (todo push)  : suíte COMPLETA (inclui os testes de Spark)
+
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: mypy
+        name: mypy
+        entry: uv run mypy .
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        require_serial: true
+
+      # Subconjunto rápido a cada commit: exclui Spark/integração.
+      # A guarda tolera o exit 5 (nenhum teste coletado) enquanto a suíte está
+      # vazia; passa a valer sozinho quando o primeiro teste cair.
+      - id: pytest-fast
+        name: pytest (rápido — sem spark/integration)
+        entry: bash -c 'set +e; uv run pytest -m "not spark and not integration" -q; c=$?; [ "$c" -eq 0 ] || [ "$c" -eq 5 ]'
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+
+      # Suíte completa antes do push (inclui os testes de Spark, mais lentos).
+      - id: pytest-full
+        name: pytest (suíte completa)
+        entry: bash -c 'set +e; uv run pytest; c=$?; [ "$c" -eq 0 ] || [ "$c" -eq 5 ]'
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-push]

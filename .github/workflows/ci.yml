@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancela execuções antigas do mesmo branch/PR quando chega um push novo.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sincronizar dependências (com dev)
+        run: uv sync --dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Formatação (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Type-check (mypy)
+        run: uv run mypy .
+
+      - name: Testes (pytest)
+        shell: bash
+        run: |
+          # Tolera o código de saída 5 (nenhum teste coletado) enquanto a
+          # suíte ainda não foi escrita; qualquer falha real derruba o CI.
+          set +e
+          uv run pytest
+          code=$?
+          [ "$code" -eq 0 ] || [ "$code" -eq 5 ]
+
+  # Análise estática + quality gate no SonarQube Cloud. Job separado para não
+  # acoplar o check `quality` ao setup do Sonar; a própria SonarQube Cloud
+  # posta o check de quality gate no PR.
+  sonar:
+    name: SonarQube Cloud
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0        # histórico completo p/ detecção de "new code"
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sincronizar dependências (com dev)
+        run: uv sync --dev
+
+      - name: Cobertura (pytest -> coverage.xml)
+        shell: bash
+        run: |
+          set +e
+          uv run pytest --cov=src --cov-report=xml
+          code=$?
+          [ "$code" -eq 0 ] || [ "$code" -eq 5 ]
+
+      - name: Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io

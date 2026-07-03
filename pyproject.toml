@@ -1,0 +1,89 @@
+[project]
+name = "uschema"
+version = "0.1.0"
+description = "Porte fiel e completo do pipeline de inferência U-Schema (extração + inferência + serialização) para Python, nos paradigmas documento (MongoDB) e grafo (Neo4j)."
+readme = "README.md"
+authors = [
+    { name = "Davi Cavalcante", email = "93160711+DaviMacielCavalcante@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "inflection",
+    "loguru",
+    "neo4j",
+    "pydantic",
+    "pyecore",
+    "pymongo",
+    "pyspark",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pre-commit>=4.6.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.20",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific rules
+    "D",    # pydocstyle (docstring conventions)
+]
+ignore = [
+    "D203",  # one-blank-line-before-class (conflicts with D211)
+    "D213",  # multi-line-summary-second-line (conflicts with D212)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D"]      # don't require docstrings in tests
+"__init__.py" = ["D104"]      # don't require module docstring in __init__.py
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+pretty = true
+
+[[tool.mypy.overrides]]
+# PySpark e PyEcore não publicam type stubs completos; libere só onde falta.
+module = ["pyspark.*", "pyecore.*", "inflection.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-ra --strict-markers"
+markers = [
+    "unit: testes unitários rápidos e puros (sem Spark nem IO externo) — rodam no pre-commit",
+    "spark: testes que sobem uma SparkSession/JVM (lentos) — só no pre-push e no CI",
+    "integration: testes ponta a ponta ou contra serviços externos — só no pre-push e no CI",
+]
