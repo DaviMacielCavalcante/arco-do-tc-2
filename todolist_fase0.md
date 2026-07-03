@@ -23,7 +23,7 @@
 - [x] Ferramental configurado no `pyproject.toml`: `ruff` (docstrings NumPy, linha 100), `mypy` estrito, `pytest`.
 - [x] Esqueleto de pacotes criado, um por fase: `metamodel/` (0.1–0.2) · `naming/` (0.6) · `validation/` (0.3) · `intermediate/` (1.1) · `inference/` (1.2–1.4) · `extractors/` (2).
 - [x] Diretórios de apoio: `resources/` (`.ecore` + XMIs), `oracle/` (Dockerfile + `patches/`), `scripts/` (baterias), `tests/` (`unit`/`regression`/`datasets`), cada um com `README.md` de escopo; `CLAUDE.md` do repositório.
-- [ ] Copiar para `resources/` os artefatos de referência do repo Java original: `uschema.ecore`, `model_northwind.xmi`, `model.xmi`, `movies_min.xmi`.
+- [x] Copiar para `resources/` os artefatos de referência do repo Java original: `uschema.ecore`, `model_northwind.xmi`, `model.xmi`, `movies_min.xmi` (+ XMIs de escala Neo4j `up_*`).
 
 **Saída:** repositório com esqueleto, ferramental e dependências prontos — `uv sync` resolve, `ruff`/`mypy`/`pytest` rodam limpos no esqueleto vazio.
 
@@ -33,10 +33,10 @@
 
 > Metamodelo favorável: 19 EClasses em 98 linhas, sem OCL e sem EAnnotations (puramente estrutural).
 
-- [ ] Instalar PyEcore (`pip install pyecore`); carregar `uschema.ecore` via `ResourceSet`/`metamodel_resource`.
-- [ ] Confirmar acesso reflexivo às 19 EClasses; instanciar manualmente um `USchema` mínimo (1 `EntityType` + 1 `StructuralVariation` + 1 `Attribute`) e serializar em XMI.
-- [ ] Decidir **API reflexiva** (manipular `EObject` dinamicamente) vs. **`pyecoregen`** (gerar classes do `.ecore`). Recomendação inicial: reflexivo, para não acoplar a uma etapa de codegen; reavaliar se a ergonomia incomodar.
-- [ ] Tratar o gap conhecido: PyEcore não suporta `genmodel` multi-arquivo — se o `.ecore` referenciar outros pacotes, achatar para um único EPackage no fork.
+- [x] Instalar PyEcore (`pip install pyecore`); carregar `uschema.ecore` via `ResourceSet`/`metamodel_resource`. → `registry.load_metamodel`
+- [x] Confirmar acesso reflexivo às 19 EClasses; instanciar manualmente um `USchema` mínimo (1 `EntityType` + 1 `StructuralVariation` + 1 `Attribute`) e serializar em XMI. → `build_minimal_schema` + testes (fixture com `type` válido; asserts por valor pegam o silent-swallow do PyEcore)
+- [x] Decidir **API reflexiva** (manipular `EObject` dinamicamente) vs. **`pyecoregen`** (gerar classes do `.ecore`). **Decidido: reflexivo** — ergonomia ok na prática (0.1/0.2).
+- [x] Tratar o gap conhecido: PyEcore não suporta `genmodel` multi-arquivo — se o `.ecore` referenciar outros pacotes, achatar para um único EPackage no fork. **Não se aplica:** o `uschema.ecore` é 1 único EPackage (nsURI `http://www.modelum.es/USchema`) — verificado.
 
 **Saída:** módulo Python em `src/uschema/metamodel/` que cria, lê e serializa modelos U-Schema em XMI.
 
@@ -44,7 +44,7 @@
 
 ## 0.2 — Round-trip de XMI
 
-- [ ] Ler `model_northwind.xmi` (19 `EntityType`, incluindo o agregado `Detail`) com PyEcore.
+- [x] Ler `model_northwind.xmi` (19 `EntityType`, incluindo o agregado `Detail`) com PyEcore. → `xmi.load_model` (validado: 19 entidades + `Detail`)
 - [ ] Reserializar e validar que o modelo recarregado é **estruturalmente idêntico** ao original (não precisa ser byte a byte — EMF tem convenções próprias de `xmi:id`/ordenação).
 - [ ] Repetir com `model.xmi` (mínimo MongoDB) e `movies_min.xmi` (mínimo Neo4j, com `RelationshipType`).
 
