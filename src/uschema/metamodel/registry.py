@@ -19,12 +19,13 @@ from pyecore.resources import Resource, ResourceSet
 # Caminho do .ecore versionado em resources/ (raiz do repo → resources/uschema.ecore).
 DEFAULT_ECORE_PATH = Path(__file__).resolve().parents[3] / "resources" / "uschema.ecore"
 
-# nsURI declarado no metamodelo; usado como chave no metamodel_registry.
-USCHEMA_NS_URI = "http://www.modelum.es/USchema"
-
 
 def load_metamodel(ecore_path: Path = DEFAULT_ECORE_PATH) -> EPackage:
-    """Carregar o metamodelo U-Schema e registrá-lo para uso reflexivo.
+    """Carregar o metamodelo U-Schema para uso reflexivo.
+
+    Apenas carrega e devolve o ``EPackage`` raiz. Registrá-lo num
+    ``metamodel_registry`` para desserializar instâncias é feito por quem lê os
+    XMIs (ver ``xmi.load_model``), pois o registro é por ``ResourceSet``.
 
     Parameters
     ----------
@@ -35,13 +36,20 @@ def load_metamodel(ecore_path: Path = DEFAULT_ECORE_PATH) -> EPackage:
     Returns
     -------
     EPackage
-        O pacote raiz do metamodelo (o ``USchema`` EPackage), já registrado
-        no ``metamodel_registry`` do ``ResourceSet`` sob ``USCHEMA_NS_URI``.
+        O pacote raiz do metamodelo (o ``USchema`` EPackage).
 
     Raises
     ------
     FileNotFoundError
         Se ``ecore_path`` não existir.
+
+    Examples
+    --------
+    >>> pkg = load_metamodel()
+    >>> pkg.name
+    'USchema'
+    >>> len(list(pkg.eClassifiers))
+    19
     """
     resource_set = ResourceSet()
 
@@ -50,7 +58,5 @@ def load_metamodel(ecore_path: Path = DEFAULT_ECORE_PATH) -> EPackage:
     resource: Resource = resource_set.get_resource(str_ecore_path)
 
     e_package: EPackage = resource.contents[0]
-
-    resource_set.metamodel_registry[e_package.nsURI] = e_package
 
     return e_package
