@@ -11,7 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from pyecore.ecore import EObject, EPackage
-from pyecore.resources import Resource, ResourceSet
+from pyecore.resources import Resource, ResourceSet, URI
+
 
 
 def load_model(xmi_path: Path, pkg: EPackage) -> EObject:
@@ -49,3 +50,27 @@ def load_model(xmi_path: Path, pkg: EPackage) -> EObject:
     e_object: EObject = resource.contents[0]
 
     return e_object
+
+def save_model(schema: EObject, xmi_path: Path) -> None:
+    """Serializar um modelo U-Schema (raiz USchema) para um arquivo XMI.
+
+    Parameters
+    ----------
+    schema : EObject
+        A raiz ``USchema`` do modelo a ser salvo.
+    xmi_path : Path
+        Caminho onde ``.xmi`` será criado (ex.: ``output/mongodb/model_northwind.xmi``).
+
+    Raises
+    ------
+    FileNotFoundError
+        Se o diretório de ``xmi_path`` não existir.
+    """
+
+    resource_set = ResourceSet()
+
+    resource: Resource = resource_set.create_resource(URI(str(xmi_path)))
+
+    resource.append(schema)
+
+    resource.save()
