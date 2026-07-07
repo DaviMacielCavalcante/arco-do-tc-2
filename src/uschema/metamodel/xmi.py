@@ -11,8 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pyecore.ecore import EObject, EPackage
-from pyecore.resources import Resource, ResourceSet, URI
-
+from pyecore.resources import URI, Resource, ResourceSet
 
 
 def load_model(xmi_path: Path, pkg: EPackage) -> EObject:
@@ -65,8 +64,14 @@ def save_model(schema: EObject, xmi_path: Path) -> None:
     ------
     FileNotFoundError
         Se o diretório de ``xmi_path`` não existir.
-    """
 
+    Examples
+    --------
+    >>> from uschema.metamodel.registry import load_metamodel
+    >>> pkg = load_metamodel()
+    >>> schema = load_model(Path("resources/mongodb/model_northwind.xmi"), pkg)
+    >>> save_model(schema, Path("output/model_northwind.xmi"))
+    """
     resource_set = ResourceSet()
 
     resource: Resource = resource_set.create_resource(URI(str(xmi_path)))
