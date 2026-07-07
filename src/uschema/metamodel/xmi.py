@@ -50,6 +50,7 @@ def load_model(xmi_path: Path, pkg: EPackage) -> EObject:
 
     return e_object
 
+
 def save_model(schema: EObject, xmi_path: Path) -> None:
     """Serializar um modelo U-Schema (raiz USchema) para um arquivo XMI.
 
