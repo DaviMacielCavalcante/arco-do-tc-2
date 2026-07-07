@@ -45,8 +45,8 @@
 ## 0.2 — Round-trip de XMI
 
 - [x] Ler `model_northwind.xmi` (19 `EntityType`, incluindo o agregado `Detail`) com PyEcore. → `xmi.load_model` (validado: 19 entidades + `Detail`)
-- [ ] Reserializar e validar que o modelo recarregado é **estruturalmente idêntico** ao original (não precisa ser byte a byte — EMF tem convenções próprias de `xmi:id`/ordenação).
-- [ ] Repetir com `model.xmi` (mínimo MongoDB) e `movies_min.xmi` (mínimo Neo4j, com `RelationshipType`).
+- [x] Reserializar e validar que o modelo recarregado é **estruturalmente idêntico** ao original (não precisa ser byte a byte — EMF tem convenções próprias de `xmi:id`/ordenação).
+- [x] Repetir com `model.xmi` (mínimo MongoDB) e `movies_min.xmi` (mínimo Neo4j, com `RelationshipType`).
 
 ---
 
