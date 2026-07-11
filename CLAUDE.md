@@ -14,6 +14,13 @@ O plano completo está nos `.md` da raiz: `roadmap_portabilidade.md` e
 `fase0`…`fase3`. Leia-os antes de trabalhar em qualquer módulo — eles são a
 fonte da verdade sobre fidelidade.
 
+`bugs_originais.md` (raiz) cataloga os **defeitos herdados do Java**, com
+evidência e citação de linha: os patches `#1`–`#8` já conhecidos e os achados
+`C1`–`C7` da árvore de comparadores. Consulte-o antes de "corrigir" um
+comportamento estranho do original — vários são deliberados, e os que não são só
+devem ser corrigidos **depois** da equivalência estar demonstrada. Um porte que
+melhora o original não pode ser validado contra ele.
+
 ## Project layout
 
 Layout `src/` (pacote `uschema`), com CLI registrada em `[project.scripts]`
@@ -52,7 +59,7 @@ Comandos comuns:
 
 ## Key dependencies
 
-- **pyecore** — metamodelo/serialização: carrega `uschema.ecore` e lê/grava XMI (substitui Factory/Package/Switch do EMF via API reflexiva).
+- **pyecore** — metamodelo/serialização: carrega `uschema.ecore` e lê/grava XMI (substitui Factory/Package/Switch do EMF via API reflexiva). **Não distribui `py.typed`** — ver o aviso sobre `mypy` em *Coding conventions*.
 - **pyspark** — extração distribuída (Fase 2); só RDD de baixo nível (`map`/`reduceByKey`/`flatMap`), sem DataFrame SQL. **Fixa o teto de Python em 3.12.**
 - **pymongo** — leitura de `dict`/`bson` do MongoDB (o `_id` é lido genericamente — bug #6).
 - **neo4j** — driver do paradigma grafo (validar a versão do connector Spark contra o Neo4j-alvo).
@@ -63,6 +70,23 @@ Comandos comuns:
 ## Coding conventions
 
 - **Type hints obrigatórios** em toda assinatura. `mypy` roda estrito; código novo passa sem `# type: ignore` salvo necessidade real.
+
+> ⚠️ **`mypy` não protege nada que atravesse a fronteira do PyEcore.** A lib não
+> distribui `py.typed`, então `EObject` é `Any`: qualquer atributo "existe", com
+> qualquer tipo, e casa com qualquer assinatura. Na Fase 0.3, **seis** erros
+> passaram por `mypy --strict` e só apareceram em execução — três typos
+> (`f1.optionl`, `r1.opoosite`, `r2.refTo`), um acesso a campo inexistente
+> (`variation.name`; quem tem `name` é o `SchemaType`), um `EObject` passado onde
+> se pedia `Iterable[EObject]`, e uma leitura de `.optional` içada para fora do
+> braço do `match` (estoura `AttributeError` em `Key`, que não tem o campo).
+>
+> Consequências práticas: (1) **anote o local** ao ler do PyEcore
+> (`nome: str = obj.name`) — não pega typo, mas documenta a intenção e faz o
+> mypy checar o uso a jusante; (2) **todo acesso a campo precisa ser exercitado
+> por teste ao menos uma vez** — inclusive os que só rodam no caminho de erro,
+> como as f-strings de mensagem de diagnóstico, que é onde eles se escondem; (3)
+> use `obj.eClass.name` (string) para saber o tipo concreto, nunca `isinstance`.
+
 - **Docstrings em estilo NumPy** (`Parameters`/`Returns`/`Raises`/`Examples`), não Google/Sphinx.
 - **Linha de 100** colunas (ruff).
 - **Imports ordenados pelo ruff** (isort). Não reordene à mão; rode `uv run ruff check --fix .`.

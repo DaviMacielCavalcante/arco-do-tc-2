@@ -54,10 +54,17 @@
 
 > **Não inventar do zero — espelhar o `USchemaCompareMain`** (`es.um.uschema.*.validation`), que já existe no Java: `startComparison(USchema s1, USchema s2)` compara nome → contagem de `EntityType`/`RelationshipType` → variações (via `CompareSchemaType`/`CompareStructuralVariation`), com log de *hits*/*warnings* e normalização de caixa. Reproduzir a mesma noção de equivalência evita ficar mais rígido ou mais frouxo que o original.
 
-- [ ] Ler `USchemaCompareMain` (+ `CompareSchemaType` / `CompareStructuralVariation`) e replicar sua semântica de comparação em Python.
-- [ ] Implementar a **assinatura canônica** de uma variação (conjunto ordenado de `(nome, tipo, papel)` das features).
-- [ ] Implementar a comparação e o **relatório de divergências por categoria** — `{entidade, variacao, feature, contagem}` — essencial para diagnosticar onde o porte divergiu.
-- [ ] Testar o harness contra ele mesmo (A == A → equivalente) e contra um XMI deliberadamente alterado (deve apontar a categoria certa).
+- [x] Ler `USchemaCompareMain` (+ toda a árvore `custom/compare/*`) e replicar sua semântica em Python.
+- [x] Portar as funções de comparação: `compare_primitive_type`, `compare_datatype`, `compare_p{list,set,map,tuple}`, `compare_attribute`, `compare_feature`, `compare_key`, `compare_variation`, `compare_aggregate`, `compare_reference`, `compare_names`, `_same_container`, `_match_bag`.
+- [x] Cobrir com testes unitários (`tests/unit/test_equivalence.py`, 78 testes) e validá-los por **mutation testing** — 5 mutações reintroduzindo bugs reais, todas pegas.
+- [x] Catalogar os defeitos do original em `bugs_originais.md` (#1–#8 já conhecidos + C1–C7 novos, com evidência e citação de linha).
+- [ ] ~~Implementar a **assinatura canônica** de uma variação~~ — **descartado deliberadamente.** O Java não usa assinatura canônica: `CompareStructuralVariation` casa as `features` como **multiset**, via remoção de uma cópia. Portamos essa mecânica (`_match_bag`), que é mais fiel. Uma assinatura ordenada imporia uma noção de igualdade que o oráculo não tem.
+- [x] Driver `USchemaComparer`: `start_comparison` (os 5 passos na ordem do Java, nenhum interrompendo o seguinte), `_compare_entities` (busca exata → fallback fuzzy → `root` não-fatal), `_compare_relationships` (sem fuzzy) e a fachada `compare`.
+- [x] **Relatório de divergências por categoria** — todas as categorias populadas, com mensagem identificando os dois lados. `DivergenceCategory.FEATURE` ficou **sem emissor** (a granularidade do oráculo para na variação): reservada, e a remover se as Fases 1–3 não a usarem.
+- [x] Testar o harness contra ele mesmo (A == A → equivalente) e contra um XMI deliberadamente alterado (deve apontar a categoria certa). → 2 testes A==A (northwind + movies) e 9 mutações parametrizadas, uma por categoria/fatalidade emitida.
+- [x] **Achado C8 — desvio deliberado do oráculo.** O A==A revelou que o comparador do Java **reprova o `model_northwind.xmi` contra si mesmo**: um array vazio vira `PList` sem `elementType`, e o `checkNulls` (`or`, não XOR) reprova dois tipos ausentes. Um comparador de equivalência não-reflexivo não valida nada — nenhum porte, por mais fiel, passaria. Corrigimos (`(None, None)` casa) e catalogamos em `bugs_originais.md`; é o **único** ponto em que o porte diverge do original.
+
+> **Política de estritância — "fiel + reporte extra".** O `startComparison` do Java é `void`: só acumula `hitLog`/`warningLog`. Logo `equivalent` := `warningLog` vazio, e **fatal = tudo que iria para o `warningLog`**. Ficam **não-fatais** as categorias que o Java não registra (`COUNT`, `ROOT`), as que ele registra como `hit` (fallback fuzzy de entidade) e as variações órfãs (C7). Assim o veredito nunca é mais rígido nem mais frouxo que o oráculo, e o relatório é mais informativo que o dele.
 
 **Deve coincidir:** conjunto de `EntityType` (nomes pós-Inflector) + flag `root`; conjunto de `RelationshipType` + propriedades; por entidade, o conjunto de `StructuralVariation`; por variação, `Attribute`/`Aggregate`/`Reference` (tipo, cardinalidade, `refsTo`, `opposite`, `optional`) e `count`.
 **Ignora:** `xmi:id`, ordem de serialização, formatação.
@@ -102,8 +109,8 @@
 
 ## ✅ Gate de aceite da Fase 0
 
-- [ ] Round-trip do `model_northwind.xmi` fecha (recarrega estruturalmente idêntico).
-- [ ] Harness de equivalência funcionando (acerta A==A e detecta divergência injetada), com a semântica espelhada do `USchemaCompareMain`.
+- [x] Round-trip do `model_northwind.xmi` fecha (recarrega estruturalmente idêntico).
+- [x] Harness de equivalência funcionando (acerta A==A e detecta divergência injetada), com a semântica espelhada do `USchemaCompareMain`.
 - [ ] Suíte JUnit inventariada — regressão mapeada para a Fase 1, golden-master para a Fase 3.
 - [ ] Imagem Docker roda o baseline JUnit e regenera os XMIs-gabarito de forma reproduzível.
 
