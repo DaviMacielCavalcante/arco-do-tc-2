@@ -16,7 +16,7 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
 - **`#1`–`#8`** — a série de *patches do oráculo* (`oracle/patches/`), já
   estabelecida no projeto. `#1`–`#5` são compatibilidade de build; `#6`–`#8` são
   defeitos semânticos.
-- **`C1`–`C8`** — achados **novos**, na árvore de comparadores
+- **`C1`–`C7`** — achados **novos**, na árvore de comparadores
   (`es.um.uschema.utils/.../custom/compare/`), levantados ao portar o harness de
   equivalência (Fase 0.3). Não existiam catalogados.
 
@@ -44,18 +44,10 @@ contrário.
 | C5 | `CompareSchemaType.java:98` | termo booleano morto | code smell | simplificado |
 | C6 | `CompareReference.java:45` | guarda assimétrico de nulo | code smell | não portado |
 | **C7** | `USchemaCompareMain.java:120` | casamento de variações não-injetivo | **falso positivo** | replicado + reporte |
-| **C8** | `Comparator.checkNulls`, via `ComparePList` | dois `elementType` nulos reprovam | **não-reflexividade** | **corrigido (desvio declarado)** |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
 modo de falha que o instrumento de validação não pode ter.
-
-`C8` também: é o **único item deste catálogo em que o porte diverge
-deliberadamente do oráculo**. Os demais são replicados (fiéis) ou corrigidos numa
-área que o oráculo já corrigia por patch. O C8 quebra a reflexividade do
-comparador — `compare(A, A)` reprova o `model_northwind.xmi` —, e um instrumento
-de medida que não é reflexivo não mede nada. Ver a seção C8 para a justificativa
-completa.
 
 Severidade: **crash** = exceção em dado real · **crash latente** = exceção
 possível, não exercitada pelos dados do oráculo · **corretude** = resultado
@@ -529,110 +521,21 @@ dispensa até o check de tamanho (que passa a ser consequência).
 
 ---
 
-## C8 — `checkNulls` quebra a reflexividade do comparador (array vazio)
-
-**Sítio:** `Comparator.checkNulls` (guarda herdada), alcançada por
-`ComparePList.apply` → `CompareDataType.apply(l1.getElementType(), l2.getElementType())`.
-
-```java
-protected boolean checkNulls(Object o1, Object o2)
-{
-  return o1 == null || o2 == null;   // <-- `or`, não `xor`
-}
-```
-
-**Sintoma.** Um array **vazio** (`[]`) no documento de origem produz um `PList`
-**sem `elementType`** — não há elemento do qual inferir o tipo, e o campo fica
-nulo. Ao comparar dois desses, `ComparePList` chama `CompareDataType` com
-`(null, null)`, o `checkNulls` dispara pelo `or`, e o resultado é `false`: **dois
-`PList` vazios idênticos são declarados diferentes.**
-
-**Evidência (Fase 0.3, harness portado).** O `model_northwind.xmi` tem um
-`Attribute` `privileges` na entidade `Employees` tipado como `PList` de
-`elementType` nulo. Comparando o XMI **consigo mesmo** (dois `load_model` do mesmo
-arquivo, objetos distintos):
-
-```text
-$ compare(northwind, northwind)
-equivalent: False
-FATAL variation | Schema1 Employees.1 is not matched by any variation in Schema2 Employees
-```
-
-O `false` sobe em cascata: o `Attribute privileges` reprova; a `Reference` que o
-tem em `attributes` reprova junto (o multiset interno não fecha); a variação
-inteira não casa; e a divergência é **fatal**.
-
-**Consequência: o comparador do Java não é reflexivo.** `compare(A, A)` reprova
-um modelo de referência do próprio projeto. Como a relação de equivalência
-estrutural é, por definição, reflexiva, o comparador não implementa a relação que
-promete implementar — e nenhum porte, por mais fiel que seja, passaria: os **dois**
-lados teriam o `PList` vazio, e dois `PList` vazios não casam.
-
-**Inconsistência interna.** O mesmo código-base responde a mesma pergunta de dois
-jeitos, dependendo de quem chama:
-
-| Chamador | "dois tipos nulos são iguais?" |
-|---|---|
-| `CompareAttribute` (guarda própria, antes de delegar) | **sim** |
-| `CompareDataType`, via `ComparePList`/`ComparePSet`/`ComparePMap` | **não** |
-
-Não há razão de domínio para a diferença. O autor tratou o caso no comparador de
-atributo e não no de tipo.
-
-**Fronteira com a entrada "não é defeito".** O `assertFalse(cSchema.compare(null,
-null))` do `CompareUSchemaTest` trava esse comportamento **no topo**: comparar dois
-*schemas* inexistentes. Ali "nada não é equivalente a nada" é defensável, e
-continua replicado no porte. O C8 é a mesma guarda alcançada por outro caminho —
-um `elementType` legitimamente ausente **dentro de um modelo válido** —, onde ela
-deixa de ser uma decisão sobre nulos e vira um defeito sobre dados. O teste do
-upstream não cobre esse caminho.
-
-**Decisão no porte: DIVERGIR do oráculo, deliberadamente.** É o único item deste
-catálogo em que o porte não replica o comportamento do original. A guarda de
-`compare_datatype` passa de `or` a **XOR**:
-
-| `t1` | `t2` | oráculo | porte |
-|---|---|---|---|
-| `None` | `None` | `False` | **`True`** |
-| `None` | algo | `False` | `False` |
-| algo | `None` | `False` | `False` |
-| algo | algo | compara | compara |
-
-**Só a primeira linha muda** — e é exatamente o caso em que os dois lados
-**concordam** (ambos com array vazio). Não há divergência real a mascarar ali:
-divergência real é um lado ter `elementType` e o outro não, e essa continua
-reprovando. O poder de discriminação do harness não cai em ponto nenhum; o que se
-recupera é a reflexividade.
-
-**Por que não esperar a equivalência estar demonstrada** (como manda a política do
-projeto para os demais defeitos): porque este defeito está no **instrumento de
-medida**, não no objeto medido. Ele *impede* demonstrar a equivalência. Enquanto
-não for corrigido, todo modelo com um array vazio reprova — inclusive contra si
-mesmo — e não há Fase 1, 2 ou 3.
-
-**Correção upstream.** Trocar o `||` por `^` no `checkNulls` **do `CompareDataType`**
-(não no `Comparator` base, para não quebrar o `CompareUSchemaTest`), ou — melhor —
-fazer o `USchemaModelBuilder` tipar o array vazio como `elementType = Null` em vez
-de deixá-lo nulo: a EClass `Null` existe no metamodelo justamente para representar
-o tipo ausente, e o `CompareDataType` já casa `Null` com `Null`. Essa segunda via
-resolve a causa em vez do sintoma, e é vizinha do #7 (o mesmo array vazio,
-estourando na inferência).
-
----
-
 ## O que **não** é defeito
 
 Registrado para evitar que uma leitura futura os "corrija":
 
-- **`Comparator.checkNulls(null, null)` faz `compare` devolver `false`** — *no
-  topo*. Comparar dois objetos **inexistentes** devolve `false`: contraintuitivo,
-  mas deliberado e travado por teste no próprio JUnit do upstream
-  (`CompareUSchemaTest`: `assertFalse(cSchema.compare(null, null))`). Replicado no
-  porte. **Não confundir com o C8:** a *mesma* guarda, alcançada pelo
-  `ComparePList` sobre um `elementType` legitimamente ausente (array vazio), deixa
-  de ser uma decisão sobre nulos e vira não-reflexividade sobre um modelo válido.
-  O teste do upstream não cobre esse caminho. A fronteira entre os dois casos está
-  documentada na seção C8.
+- **`Comparator.checkNulls(null, null)` faz `compare` devolver `false`.** Dois
+  nulos não são equivalentes. Contraintuitivo, mas deliberado e travado por
+  teste no próprio JUnit do upstream
+  (`CompareUSchemaTest`: `assertFalse(cSchema.compare(null, null))`).
+  **Isto não torna o comparador não-reflexivo**, apesar da aparência: um tipo
+  *ausente* só ocorre dentro de um contêiner, e **todo** contêiner
+  (`ComparePList`, `ComparePSet`, `ComparePMap`, `CompareAttribute`) guarda o caso
+  "ausente dos dois lados" com um `(x == null && y == null) ||` **antes** de
+  delegar ao `CompareDataType`. A guarda com `or` só é alcançada quando não há
+  contêiner que a proteja — o que o modelo não produz. Replicar a assimetria **no
+  lugar certo** é o que mantém o veredito idêntico ao do oráculo.
 - **`CompareAggregate` casa variações agregadas só pelo nome do `container`**,
   ignorando as `features` delas. É o que impede recursão infinita em agregado
   cíclico — o análogo do guarda que falta em C2. Deliberado.
@@ -648,12 +551,6 @@ Registrado para evitar que uma leitura futura os "corrija":
 
 Ordem sugerida, do mais defensável ao mais invasivo:
 
-0. **C8** — tipar o array vazio como `elementType = Null` no `USchemaModelBuilder`
-   (ou, na versão mínima, trocar `||` por `^` no `checkNulls` do
-   `CompareDataType`). Vem antes de tudo: é o único defeito que o **próprio
-   projeto já pode demonstrar** com os seus artefatos de referência — o comparador
-   do upstream reprova o `model_northwind.xmi` contra si mesmo. É também o único
-   em que o porte já divergiu, então o PR é a via de reconciliação.
 1. **C7** — trocar o `findAny` sem remoção pela mecânica já usada em
    `CompareStructuralVariation`. Correção pequena, localizada num método
    privado, e é a única do catálogo que fecha um **falso positivo**. Deveria
@@ -684,10 +581,3 @@ Ordem sugerida, do mais defensável ao mais invasivo:
 Nada disso deve entrar no porte antes de a equivalência estrutural com o oráculo
 estar demonstrada. Um porte que "melhora" o original não pode ser validado
 contra ele.
-
-**A única exceção é o C8, e ela prova a regra.** A regra vale para defeitos no
-**objeto medido** — o pipeline de inferência. O C8 está no **instrumento de
-medida**, e destrói a propriedade sem a qual o instrumento não mede: a
-reflexividade. Corrigi-lo não é melhorar o original antes da hora; é ter com o que
-comparar. Todo desvio dessa natureza — se houver outro — tem de ser registrado
-aqui, com a evidência e a justificativa, antes de entrar no código.

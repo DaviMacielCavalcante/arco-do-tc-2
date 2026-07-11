@@ -62,7 +62,7 @@
 - [x] Driver `USchemaComparer`: `start_comparison` (os 5 passos na ordem do Java, nenhum interrompendo o seguinte), `_compare_entities` (busca exata → fallback fuzzy → `root` não-fatal), `_compare_relationships` (sem fuzzy) e a fachada `compare`.
 - [x] **Relatório de divergências por categoria** — todas as categorias populadas, com mensagem identificando os dois lados. `DivergenceCategory.FEATURE` ficou **sem emissor** (a granularidade do oráculo para na variação): reservada, e a remover se as Fases 1–3 não a usarem.
 - [x] Testar o harness contra ele mesmo (A == A → equivalente) e contra um XMI deliberadamente alterado (deve apontar a categoria certa). → 2 testes A==A (northwind + movies) e 9 mutações parametrizadas, uma por categoria/fatalidade emitida.
-- [x] **Achado C8 — desvio deliberado do oráculo.** O A==A revelou que o comparador do Java **reprova o `model_northwind.xmi` contra si mesmo**: um array vazio vira `PList` sem `elementType`, e o `checkNulls` (`or`, não XOR) reprova dois tipos ausentes. Um comparador de equivalência não-reflexivo não valida nada — nenhum porte, por mais fiel, passaria. Corrigimos (`(None, None)` casa) e catalogamos em `bugs_originais.md`; é o **único** ponto em que o porte diverge do original.
+- [x] **Conferência contra os JUnit do original** (`CompareDataTypeTest`, `ComparePropertyTest`, `CompareUSchemaTest`, `ModelIOTest`) — não portados por cima (já cobertos), mas com as asserções conferidas uma a uma. **Achou 4 lacunas reais do porte**, todas o mesmo esquecimento: o original guarda "tipo ausente dos dois lados" em **cada contêiner** (`ComparePList`, `ComparePSet`, `ComparePMap` ×2, `ComparePrimitiveType`) antes de delegar ao `CompareDataType`; portamos essa guarda só no `compare_attribute`. Três delas causavam `AttributeError` onde o Java devolve veredito. Ver `tests/regression/INVENTARIO.md`.
 
 > **Política de estritância — "fiel + reporte extra".** O `startComparison` do Java é `void`: só acumula `hitLog`/`warningLog`. Logo `equivalent` := `warningLog` vazio, e **fatal = tudo que iria para o `warningLog`**. Ficam **não-fatais** as categorias que o Java não registra (`COUNT`, `ROOT`), as que ele registra como `hit` (fallback fuzzy de entidade) e as variações órfãs (C7). Assim o veredito nunca é mais rígido nem mais frouxo que o oráculo, e o relatório é mais informativo que o dele.
 
@@ -76,9 +76,16 @@
 
 > Quatro camadas, da mais barata/localizante para a mais ampla: (1) regressão portada → localiza o erro no módulo; (2) golden-master de dataset → ponta a ponta sem Docker; (3) oráculo Docker → só para datasets sem gabarito; (4) validação contra o banco → checagem independente do código.
 
-- [ ] Inventariar os JUnit do repo (`*/test/regression`, `*/test`, `documents/.../examples/tests`) e seus dados (`testSources/*.json`).
-- [ ] **Portar primeiro** os testes de regressão (critério de aceite módulo a módulo da Fase 1): `CountTimestampTest` (área do bug #8), `ObjectIdTest` (bug #6, dado em `testSources/ObjectIds.json`), `InflectorTest`, `OptionalTest`, `TypesTest`, `SimplifyAggrTest`, `RelationshipTypeToEntityTypeTest`, `RemovePMapTest`, e no Mongo `SimplificationTest`/`PairOperationsTest`.
-- [ ] Mapear os golden-master de dataset (`UserProfileTest`, `EveryPoliticianTest`, `CompaniesTest`, `FacebookTest`, `StackOverflowTest`…) para a **Fase 3**.
+- [x] Inventariar os JUnit do repo (`*/test/regression`, `*/test`, `documents/.../examples/tests`) e seus dados (`testSources/*.json`). → **`tests/regression/INVENTARIO.md`**: 37 `*Test.java`, ~2.500 linhas, classificados por bloco (regressão pura · presa a Mongo · golden-master · código morto).
+- [x] Mapear os golden-master de dataset para a **Fase 3**. → bloco C do inventário: `UserProfileTest`, `FacebookTest`, `CompaniesTest`, `TypeAndRefTest`, `MapReduceTimestampTest` (todos exigem banco → `@pytest.mark.integration`).
+- [ ] **Portar** os testes de regressão (critério de aceite módulo a módulo da Fase 1) — **dissolve-se na Fase 1**, test-alongside; a ordem está no inventário. Único desbloqueado hoje: `InflectorTest` (não depende da inferência nem de banco — fecha junto com a 0.6).
+
+> ⚠️ **Dois achados do inventário contrariam a suposição do roadmap** (detalhe em `INVENTARIO.md`):
+>
+> 1. **Metade dos "testes de regressão" exige um MongoDB de pé.** `CountTimestampTest`, `ObjectIdTest`, `TypesTest` e `SimplifyAggrTest` injetam o JSON no banco e rodam o **map-reduce no Mongo** antes de inferir. Não são a camada barata que o roadmap supõe — são integração disfarçada.
+> 2. **Dá para portá-los sem banco, cortando na tripla.** A saída do map-reduce (`{schema, count, firstTimestamp, lastTimestamp}`) **é** o contrato de `extractors/triple.py`. Congelada como fixture (gerada uma vez pelo oráculo da 0.5), a inferência é testada em unidade. É o que os testes puros do `doc2uschema` já fazem — o `OptionalTest` traz esse JSON escrito à mão dentro da classe.
+>
+> Também: os 17 arquivos de `documents/.../examples/tests/` **não são testes** (16 têm corpo vazio, o 17º é um *runner* sem asserção), e o `automated/AutoTest1` só afirma `assertEquals(true, true)`. Não portar.
 
 > ⚠️ **Testes que codificam o bug.** Onde você corrigiu um bug (#6/#7/#8), porte a *estrutura* do teste mas afirme o valor **corrigido**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (só aparece com array de tamanho variável) — a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
 
@@ -111,7 +118,7 @@
 
 - [x] Round-trip do `model_northwind.xmi` fecha (recarrega estruturalmente idêntico).
 - [x] Harness de equivalência funcionando (acerta A==A e detecta divergência injetada), com a semântica espelhada do `USchemaCompareMain`.
-- [ ] Suíte JUnit inventariada — regressão mapeada para a Fase 1, golden-master para a Fase 3.
+- [x] Suíte JUnit inventariada — regressão mapeada para a Fase 1, golden-master para a Fase 3. → `tests/regression/INVENTARIO.md`
 - [ ] Imagem Docker roda o baseline JUnit e regenera os XMIs-gabarito de forma reproduzível.
 
 **Entregáveis:** `src/uschema/metamodel/` (metamodelo + round-trip XMI) · `src/uschema/validation/equivalence.py` (harness) · inventário/mapa dos testes JUnit a portar (`tests/regression/`) · `oracle/Dockerfile` + `oracle/patches/` · `src/uschema/naming/` (Inflector).

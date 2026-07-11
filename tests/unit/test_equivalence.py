@@ -35,8 +35,13 @@ def metamodel() -> EPackage:
     return load_metamodel()
 
 
-def make_primitive(pkg: EPackage, name: str) -> EObject:
-    """Criar um ``PrimitiveType`` com o nome dado, via API reflexiva."""
+def make_primitive(pkg: EPackage, name: str | None) -> EObject:
+    """Criar um ``PrimitiveType`` com o nome dado, via API reflexiva.
+
+    ``name=None`` monta um ``PrimitiveType`` **sem nome** — o ecore declara
+    ``lowerBound=1``, mas o PyEcore não impõe, e o ``ComparePrimitiveType`` do
+    original trata o caso explicitamente (XOR).
+    """
     primitive_type_class = pkg.getEClassifier("PrimitiveType")
     return primitive_type_class(name=name)
 
@@ -59,7 +64,7 @@ def make_plist(pkg: EPackage, element: EObject) -> EObject:
 
 
 def make_empty_plist(pkg: EPackage) -> EObject:
-    """Criar um ``PList`` **sem** ``elementType`` — o array vazio (bug C8).
+    """Criar um ``PList`` **sem** ``elementType`` — o array vazio.
 
     É o que a ferramenta produz para um ``[]`` no documento: um ``PList`` cujo
     ``elementType`` fica nulo, porque não há elemento do qual inferir o tipo. É o
@@ -86,11 +91,23 @@ def make_pset(pkg: EPackage, element: EObject) -> EObject:
     return pset
 
 
-def make_pmap(pkg: EPackage, key: EObject, value: EObject) -> EObject:
-    """Criar um ``PMap`` com ``keyType`` (primitivo) e ``valueType`` dados."""
+def make_empty_pset(pkg: EPackage) -> EObject:
+    """Criar um ``PSet`` **sem** ``elementType`` — o análogo do ``make_empty_plist``."""
+    return pkg.getEClassifier("PSet")()
+
+
+def make_pmap(pkg: EPackage, key: EObject | None, value: EObject | None) -> EObject:
+    """Criar um ``PMap`` com ``keyType`` (primitivo) e ``valueType`` dados.
+
+    Ambos aceitam ``None``: o ``ComparePMap`` do original guarda ``keyType`` e
+    ``valueType`` ausentes de forma **independente**, e o teste precisa montar
+    cada combinação.
+    """
     pmap = pkg.getEClassifier("PMap")()
-    pmap.keyType = key
-    pmap.valueType = value
+    if key is not None:
+        pmap.keyType = key
+    if value is not None:
+        pmap.valueType = value
     return pmap
 
 
@@ -122,6 +139,38 @@ def test_compare_primitive_type(
     p2 = make_primitive(metamodel, name2)
 
     assert compare_primitive_type(p1, p2) is expected
+
+
+@pytest.mark.unit
+def test_compare_primitive_type_guards(metamodel: EPackage) -> None:
+    """Nulos em ``ComparePrimitiveType`` — objeto e nome tratados de formas opostas.
+
+    Espelha as asserções do ``CompareDataTypeTest`` do upstream, que este porte
+    não cobria: `compare_pmap` chama `compare_primitive_type` **direto** com o
+    `keyType`, que pode ser nulo de um lado só — sem estes guardas, `AttributeError`.
+
+    - **objeto** nulo -> `checkNulls` é `or`: reprova, mesmo com os dois nulos.
+    - **nome** nulo -> XOR: um só reprova, os dois casam.
+    """
+    string = make_primitive(metamodel, "String")
+    unnamed = make_primitive(metamodel, None)
+
+    # checkNulls (`or`): assertFalse(cPrimitiveType.compare(null, null))
+    assert compare_primitive_type(None, None) is False
+    assert compare_primitive_type(string, None) is False
+    assert compare_primitive_type(None, string) is False
+
+    # nome nulo (XOR): assertFalse(compare(createPrimitiveType(null), ...("string")))
+    assert compare_primitive_type(unnamed, string) is False
+    assert compare_primitive_type(string, unnamed) is False
+
+    # ambos os nomes nulos -> casam
+    assert compare_primitive_type(unnamed, make_primitive(metamodel, None)) is True
+
+    # `"null"` é um NOME de tipo, não ausência de nome — não confundir os dois.
+    null_named = make_primitive(metamodel, "null")
+    assert compare_primitive_type(null_named, make_primitive(metamodel, "null")) is True
+    assert compare_primitive_type(null_named, unnamed) is False
 
 
 @pytest.mark.unit
@@ -189,23 +238,43 @@ def test_match_bag(
         (make_null, make_null, True),
         # Null vs PrimitiveType String (tipos diferentes) -> NÃO casam.
         (make_null, lambda p: make_primitive(p, "String"), False),
-        # --- C8: tipo AUSENTE (None) não é o mesmo que o tipo `Null` do metamodelo.
-        # `Null` é uma EClass — um tipo que existe e diz "o valor é nulo".
+        # --- Tipo AUSENTE (None) != tipo `Null` do metamodelo.
+        # `Null` é uma EClass: um tipo que EXISTE e diz "o valor é nulo".
         # `None` é a AUSÊNCIA de tipo: o elementType de um array vazio.
         #
-        # Dois tipos ausentes casam. É o desvio deliberado do oráculo (o Java
-        # reprova, e com isso deixa de ser reflexivo). Sem esta linha, nenhum
-        # modelo com array vazio é equivalente nem a si mesmo.
-        (lambda p: None, lambda p: None, True),
-        # Tipo ausente vs. tipo presente -> divergência REAL -> continua reprovando.
-        # É o que garante que o C8 afrouxou só onde os dois lados concordam.
+        # `compare_datatype` ISOLADO reprova (None, None): o `checkNulls` do Java é
+        # `or`, não XOR, e o CompareDataTypeTest do upstream trava isso. Quem trata
+        # "ausente dos dois lados" são os CONTÊINERES, antes de delegar — ver os
+        # casos de PList/PSet/PMap logo abaixo.
+        (lambda p: None, lambda p: None, False),
         (lambda p: None, lambda p: make_primitive(p, "String"), False),
         (lambda p: make_primitive(p, "String"), lambda p: None, False),
-        # O caso do dado real: `privileges` de Employees no northwind. Dois PList
-        # de array vazio -> ComparePList delega o elementType (None, None) -> casam.
+        # O caso do dado real: `privileges` de Employees no northwind (array vazio).
+        # Dois PList sem elementType casam pela guarda do ComparePList, que
+        # curto-circuita ANTES do compare_datatype. Sem ela, o northwind não é
+        # equivalente a si mesmo.
         (make_empty_plist, make_empty_plist, True),
         # PList vazio vs. PList de String -> um tem elemento, o outro não -> NÃO casam.
         (make_empty_plist, lambda p: make_plist(p, make_primitive(p, "String")), False),
+        # Mesma guarda no PSet (o ComparePSet é o ComparePList palavra por palavra).
+        (make_empty_pset, make_empty_pset, True),
+        (make_empty_pset, lambda p: make_pset(p, make_primitive(p, "String")), False),
+        # PMap: guardas INDEPENDENTES para keyType e valueType.
+        (
+            lambda p: make_pmap(p, make_primitive(p, "String"), None),
+            lambda p: make_pmap(p, make_primitive(p, "String"), None),
+            True,
+        ),
+        (
+            lambda p: make_pmap(p, None, make_primitive(p, "Boolean")),
+            lambda p: make_pmap(p, None, make_primitive(p, "Boolean")),
+            True,
+        ),
+        (
+            lambda p: make_pmap(p, make_primitive(p, "String"), None),
+            lambda p: make_pmap(p, make_primitive(p, "String"), make_primitive(p, "Boolean")),
+            False,
+        ),
     ],
 )
 def test_compare_datatype(
@@ -763,10 +832,11 @@ def test_compare_identical_models_are_equivalent(metamodel: EPackage) -> None:
     `VARIATION` órfã. São o C7 aparecendo no relatório, exatamente como projetado:
     visível, não fatal. Ver `bugs_originais.md`.
 
-    Este teste também é o que trava o C8: sem a guarda de tipo ausente em
-    `compare_datatype`, o `PList` vazio de `privileges` (entidade `Employees`)
-    derruba a variação inteira e o veredito vem `False` — o comparador do Java
-    reprova este arquivo contra si mesmo.
+    Este teste também é o que trava a guarda de tipo ausente do `compare_plist`:
+    sem ela, o `PList` de array vazio de `privileges` (entidade `Employees`) cai no
+    `checkNulls` do `compare_datatype`, derruba a variação inteira, e o veredito vem
+    `False` — o modelo deixaria de ser equivalente a si mesmo. O original tem essa
+    guarda; portá-la é o que mantém o comparador reflexivo.
     """
     schema1, schema2 = load_pair(NORTHWIND_XMI, metamodel)
 

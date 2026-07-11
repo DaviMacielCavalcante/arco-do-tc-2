@@ -24,11 +24,14 @@ Fidelidade
   alarme. O mesmo vale para o fallback fuzzy de entidade e para o casamento
   não-injetivo de variações (ver ``bugs_originais.md``, C7).
 - Ignora: ``xmi:id``, ordem de serialização, formatação.
-- **Um único desvio deliberado do oráculo** (bug C8): ``compare_datatype`` casa
-  dois tipos **ausentes** (o ``elementType`` nulo de um ``PList`` vindo de array
-  vazio), onde o Java reprova. Sem isso o comparador não é reflexivo — ele
-  reprova o ``model_northwind.xmi`` contra si mesmo — e não serve de instrumento
-  de validação. Justificativa completa em ``bugs_originais.md``.
+- **Tipo ausente** (``None``) não é o mesmo que o tipo ``Null`` do metamodelo.
+  ``Null`` é uma EClass — um tipo que *existe* e diz "o valor é nulo". ``None`` é
+  a **ausência** de tipo: o ``elementType`` de um ``PList`` vindo de um array
+  vazio, onde não há elemento do qual inferir. Cada contêiner
+  (``PList``/``PSet``/``PMap``/``Attribute``) guarda o caso "ausente dos dois
+  lados" **antes** de delegar ao ``compare_datatype`` — que, isolado, reprova
+  ``(None, None)`` (o ``checkNulls`` do Java é ``or``). A assimetria é do
+  original; replicá-la no lugar certo é o que mantém o veredito idêntico.
 
 O acesso ao modelo é **reflexivo** (PyEcore): o tipo concreto de um ``EObject``
 vem de ``obj.eClass.name`` e as features são atributos Python homônimos aos do
@@ -164,7 +167,7 @@ def _match_bag(
     return len(bag) == 0
 
 
-def compare_primitive_type(p1: EObject, p2: EObject) -> bool:
+def compare_primitive_type(p1: EObject | None, p2: EObject | None) -> bool:
     """Comparar dois ``PrimitiveType`` colapsando sinônimos.
 
     Espelha ``ComparePrimitiveType``: ``Long``, ``Integer`` e ``Number`` colapsam
@@ -172,18 +175,36 @@ def compare_primitive_type(p1: EObject, p2: EObject) -> bool:
     ``_PRIMITIVE_TYPE_MAP`` é comparado como está — e aí a comparação é
     case-**sensitive** (``Date`` != ``date``).
 
+    Diferente dos demais comparadores de tipo, este **precisa** dos guardas de
+    nulo: ``compare_pmap`` o chama direto com o ``keyType``, que pode ser ``None``
+    de um lado só. O ``name`` também pode ser nulo (``lowerBound=1`` no ecore, que
+    o PyEcore não impõe), e o Java trata os dois casos explicitamente.
+
     Parameters
     ----------
-    p1, p2 : EObject
+    p1, p2 : EObject or None
         Os dois ``PrimitiveType`` a comparar.
 
     Returns
     -------
     bool
-        ``True`` se os dois nomes mapeiam para o mesmo tipo canônico.
+        ``True`` se os dois nomes mapeiam para o mesmo tipo canônico, ou se ambos
+        os nomes são ``None``. ``False`` se algum dos **objetos** é ``None``
+        (``checkNulls``, com ``or``) ou se só um dos **nomes** é ``None`` (XOR).
     """
-    p1_name: str = p1.name
-    p2_name: str = p2.name
+    # checkNulls: `or`, não XOR — dois PrimitiveType nulos reprovam. Travado por
+    # teste no upstream (CompareDataTypeTest: assertFalse(compare(null, null))).
+    if p1 is None or p2 is None:
+        return False
+
+    p1_name: str | None = p1.name
+    p2_name: str | None = p2.name
+
+    if (p1_name is None) != (p2_name is None):
+        return False
+
+    if p1_name is None or p2_name is None:
+        return True
 
     p1_name_mapped: str = _PRIMITIVE_TYPE_MAP.get(p1_name.lower(), p1_name)
 
@@ -196,41 +217,33 @@ def compare_datatype(t1: EObject | None, t2: EObject | None) -> bool:
     """Despachar a comparação de ``DataType`` pelo tipo concreto (``eClass.name``).
 
     Espelha ``CompareDataType``. Tipos concretos diferentes nunca casam; dois
-    ``Null`` sempre casam.
+    ``Null`` sempre casam. ``None`` de qualquer lado reprova — inclusive dos dois
+    (o ``checkNulls`` do Java é ``or``, não XOR).
 
     Parameters
     ----------
     t1, t2 : EObject or None
-        Os dois ``DataType`` a comparar. ``None`` representa tipo **ausente** —
-        tipicamente o ``elementType`` de um ``PList`` vindo de um array vazio,
-        onde não há elemento do qual inferir tipo.
+        Os dois ``DataType`` a comparar.
 
     Returns
     -------
     bool
         ``True`` se são do mesmo tipo concreto e o comparador específico aprova.
-        Dois ``None`` casam; um ``None`` contra um tipo, não.
 
     Notes
     -----
-    **Desvio deliberado do oráculo (bug C8, ver ``bugs_originais.md``).** O
-    ``checkNulls`` do Java é ``or``, não XOR: lá, ``(null, null)`` reprova. Como
-    ``ComparePList`` delega o ``elementType`` a este comparador, dois ``PList``
-    vazios idênticos são declarados **diferentes** — e o comparador do Java passa
-    a reprovar o ``model_northwind.xmi`` contra **si mesmo** (o atributo
-    ``privileges`` de ``Employees`` é um array vazio). Um comparador de
-    equivalência que não é reflexivo não mede nada, e nenhum porte fiel passaria
-    por ele: os dois lados teriam o ``PList`` vazio.
+    O ``(None, None) -> False`` **não** torna o comparador não-reflexivo, apesar
+    da aparência. Um tipo ausente só ocorre dentro de um contêiner (o
+    ``elementType`` de um ``PList`` de array vazio, o ``valueType`` de um
+    ``PMap``, o ``type`` de um ``Attribute``), e **todo** contêiner trata o caso
+    de "ambos ausentes" com uma guarda própria, **antes** de delegar para cá —
+    ver ``compare_plist``, ``compare_pset``, ``compare_pmap``,
+    ``compare_attribute``. Este ramo só é alcançado quando os dois lados são
+    ``None`` sem contêiner que os guarde, o que o modelo não produz.
 
-    Divergimos aqui, e **só aqui**: ``(None, None)`` casa. O afrouxamento atinge
-    exclusivamente o caso em que os dois lados **concordam**; a divergência real —
-    um lado com tipo, o outro sem — continua reprovando. É a mesma decisão que o
-    próprio original já toma em ``CompareAttribute``, que trata ``(null, null)``
-    como igual antes de delegar.
+    Não "conserte" isto movendo a guarda para cá: a assimetria é do original, e
+    replicá-la no lugar certo é o que mantém o veredito idêntico ao dele.
     """
-    if t1 is None and t2 is None:
-        return True
-
     if t1 is None or t2 is None:
         return False
 
@@ -265,6 +278,14 @@ def compare_plist(l1: EObject, l2: EObject) -> bool:
     ``elementType``. (O tamanho ignorado que origina o bug #8 vive no
     ``ArraySC.equals`` do modelo intermediário, Fase 1.1, não aqui.)
 
+    A guarda de "ambos ausentes" é **load-bearing**: um array vazio (``[]``) no
+    documento vira um ``PList`` sem ``elementType`` — não há elemento do qual
+    inferir o tipo. Sem ela, dois ``PList`` vazios idênticos cairiam no
+    ``checkNulls`` (``or``) do ``compare_datatype`` e seriam declarados
+    **diferentes**, tornando o comparador não-reflexivo: o
+    ``model_northwind.xmi`` (atributo ``privileges`` de ``Employees``) reprovaria
+    contra si mesmo. O original tem a guarda; é daqui que ela vem.
+
     Parameters
     ----------
     l1, l2 : EObject
@@ -273,15 +294,22 @@ def compare_plist(l1: EObject, l2: EObject) -> bool:
     Returns
     -------
     bool
-        ``True`` se os ``elementType`` casam.
+        ``True`` se os ``elementType`` casam, ou se **ambos** são ``None``.
     """
     element_type1 = l1.elementType
     element_type2 = l2.elementType
+
+    if element_type1 is None and element_type2 is None:
+        return True
+
     return compare_datatype(element_type1, element_type2)
 
 
 def compare_pset(s1: EObject, s2: EObject) -> bool:
     """Comparar dois ``PSet`` pelo seu ``elementType``.
+
+    Espelha ``ComparePSet``, que é o ``ComparePList`` palavra por palavra —
+    inclusive a guarda de ``elementType`` ausente dos dois lados.
 
     Parameters
     ----------
@@ -291,10 +319,14 @@ def compare_pset(s1: EObject, s2: EObject) -> bool:
     Returns
     -------
     bool
-        ``True`` se os ``elementType`` casam.
+        ``True`` se os ``elementType`` casam, ou se **ambos** são ``None``.
     """
     element_type1 = s1.elementType
     element_type2 = s2.elementType
+
+    if element_type1 is None and element_type2 is None:
+        return True
+
     return compare_datatype(element_type1, element_type2)
 
 
@@ -312,10 +344,15 @@ def compare_pmap(m1: EObject, m2: EObject) -> bool:
     Returns
     -------
     bool
-        ``True`` se chave e valor casam.
+        ``True`` se chave e valor casam. Chave (ou valor) ausente **dos dois
+        lados** casa; ausente de um lado só, não.
     """
-    keys_match = compare_primitive_type(m1.keyType, m2.keyType)
-    values_match = compare_datatype(m1.valueType, m2.valueType)
+    keys_absent = m1.keyType is None and m2.keyType is None
+    keys_match = keys_absent or compare_primitive_type(m1.keyType, m2.keyType)
+
+    values_absent = m1.valueType is None and m2.valueType is None
+    values_match = values_absent or compare_datatype(m1.valueType, m2.valueType)
+
     return keys_match and values_match
 
 
