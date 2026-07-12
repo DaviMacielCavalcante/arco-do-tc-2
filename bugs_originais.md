@@ -19,6 +19,9 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
 - **`C1`–`C7`** — achados **novos**, na árvore de comparadores
   (`es.um.uschema.utils/.../custom/compare/`), levantados ao portar o harness de
   equivalência (Fase 0.3). Não existiam catalogados.
+- **`I1`–`I3`** — achados **novos**, no `Inflector` (`.../util/inflector/`),
+  levantados ao portar a normalização de nomes (Fase 0.6). O `Inflector` é código
+  vendorizado do **ModeShape**, então os defeitos são *upstream do upstream*.
 
 Todas as citações de linha referem-se ao `HEAD` do upstream, salvo indicação em
 contrário.
@@ -44,6 +47,9 @@ contrário.
 | C5 | `CompareSchemaType.java:98` | termo booleano morto | code smell | simplificado |
 | C6 | `CompareReference.java:45` | guarda assimétrico de nulo | code smell | não portado |
 | **C7** | `USchemaCompareMain.java:120` | casamento de variações não-injetivo | **falso positivo** | replicado + reporte |
+| I1 | `Inflector.java:470-473` | guarda ordinal testa o número, não o resto | corretude | replicado (fiel) |
+| I2 | `Inflector.java:454-459` | `titleCase` sem guarda de nulo (NPE) | crash latente | não replicado (devolve `None`) |
+| I3 | `Inflector.java:445` | javadoc do `titleCase` promete o que o código não faz | documentação | replicado (fiel ao **código**) |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
@@ -521,6 +527,161 @@ dispensa até o check de tamanho (que passa a ser consequência).
 
 ---
 
+## I1 — `ordinalize` testa o número onde deveria testar o resto
+
+`Inflector.java:468-483`:
+
+```java
+public String ordinalize(int number)
+{
+  int remainder = number % 100;            // calculado...
+  String numberStr = Integer.toString(number);
+  if (11 <= number && number <= 13)        // ...e ignorado: testa `number`
+    return numberStr + "th";
+
+  remainder = number % 10;                 // sobrescrito, sem nunca ter sido lido
+  switch (remainder) { case 1: ... "st"; case 2: ... "nd"; case 3: ... "rd"; default: ... "th"; }
+}
+```
+
+O `remainder` módulo 100 existe justamente para tratar a exceção do inglês:
+11, 12 e 13 são `th` (`eleventh`, não `eleven-first`), e a regra vale para
+**todas** as centenas — 111 é `111th`, 212 é `212th`. Mas o guarda testa
+`number`, não `remainder`. A variável é escrita, nunca lida, e sobrescrita duas
+linhas abaixo.
+
+Resultado: a exceção só é aplicada aos números 11, 12 e 13 **literais**.
+
+| entrada | `ordinalize` | correto |
+|---|---|---|
+| 11 | `11th` | `11th` |
+| 111 | **`111st`** | `111th` |
+| 112 | **`112nd`** | `112th` |
+| 213 | **`213rd`** | `213th` |
+
+O `InflectorTest` do upstream testa 1–39, 100–104, 200–204, 1000–1004,
+10000–10004 e 100000–100004 — e **nenhum** `x11`–`x13` fora do primeiro. O bug
+passa verde na suíte do próprio autor.
+
+**Alcance.** Nenhum: `ordinalize` é código morto no pipeline. As três chamadas de
+produção do Inflector usam só `capitalize` (`SchemaInference:183,188`;
+`USchemaToDocumentDb:82,169`), `singularize` (`SchemaInference:233`;
+`USchemaModelBuilder:194`; `ModelDirector:84,102`) e `pluralize`
+(`DefaultReferenceMatcherCreator:26`). O defeito não toca nome de entidade
+nenhum, e portanto não afeta a equivalência com o oráculo.
+
+**Decisão no porte: replicar, com teste que fixa o valor errado.** Não porque
+custe algo corrigir — não custa, é código morto —, mas porque a disciplina é a
+mesma do resto do catálogo: o porte reproduz o oráculo e o desvio vai
+documentado. Um teste afirma `ordinalize(111) == "111st"`, citando esta entrada;
+se alguém "consertar" o método, o teste cai e obriga a leitura daqui.
+
+**Correção upstream.** Trocar o guarda por `11 <= remainder && remainder <= 13`
+(com `remainder` já sendo `number % 100`) e remover a reatribuição. Como o
+`Inflector` é cópia vendorizada do ModeShape, a correção cabe **também** lá — e
+o mesmo defeito deve estar em toda a linhagem de cópias dessa classe.
+
+---
+
+## I2 — `titleCase` é o único método da classe sem guarda de nulo
+
+`Inflector.java:454-459`:
+
+```java
+public String titleCase(String words, String... removableTokens)
+{
+  String result = humanize(words, removableTokens);          // humanize(null) → null
+  result = replaceAllWithUppercase(result, "\\b([a-z])", 1); // → Pattern.matcher(null) → NPE
+  return result;
+}
+```
+
+Todo método público da classe abre com o mesmo guarda — `pluralize`,
+`singularize`, `camelCase`, `underscore`, `capitalize`, `humanize`,
+`isUncountable` — e o contrato, uniforme, é **`null` entra, `null` sai**. O
+`titleCase` é a única exceção, e não por decisão: ele não guarda porque delega ao
+`humanize`, que guarda… e devolve o `null` que o `titleCase` então entrega ao
+`replaceAllWithUppercase`. Lá, `Pattern.matcher(null)` estoura
+`NullPointerException`.
+
+Não é "entrada nula é erro" — se fosse, o método lançaria `IllegalArgumentException`
+com mensagem, como faz o resto do ecossistema Java quando quer rejeitar nulo. É
+uma linha faltando.
+
+**Alcance.** Nenhum: `titleCase` é código morto no pipeline (ver o alcance de I1)
+e o `InflectorTest` nunca o chama com `null` — a suíte do autor não exercita o
+caminho.
+
+**Decisão no porte: não replicar.** `title_case(None)` devolve `None`, alinhado
+ao contrato uniforme dos outros nove métodos. É o único ponto do porte onde
+**deliberadamente não se reproduz** o comportamento do oráculo, e a justificativa
+é que não há comportamento a reproduzir: uma `NullPointerException` acidental não
+é semântica, é ausência de semântica. Nenhuma equivalência estrutural depende
+disso — o oráculo jamais chama `titleCase`, com nulo ou sem.
+
+**Correção upstream.** Acrescentar ao `titleCase` o mesmo guarda dos irmãos:
+
+```java
+if (words == null)
+  return null;
+```
+
+É a correção mais barata do catálogo: uma linha, sem mudança de comportamento em
+nenhuma entrada válida, e fecha a única inconsistência de contrato da classe.
+
+---
+
+## I3 — o javadoc do `titleCase` documenta um método que não existe
+
+`Inflector.java:444-445` (idêntico nas duas cópias vendorizadas):
+
+```java
+ *   inflector.titleCase("man from the boondocks")       #=> "Man From The Boondocks"
+ *   inflector.titleCase("x-men: the last stand")        #=> "X Men: The Last Stand"
+```
+
+O segundo exemplo é **falso**. O `titleCase` delega ao `humanize`, e o `humanize`
+não toca em hífen em passo nenhum: ele remove o `_id` final, remove os tokens
+pedidos, troca `_+` por espaço e capitaliza. O `-` atravessa intacto. O valor real
+é `"X-Men: The Last Stand"`.
+
+**Causa.** O exemplo veio do `titleize` do Rails, que faz um passo a mais:
+
+```ruby
+def titleize(word)
+  humanize(underscore(word)).gsub(/\b(?<!['’`])[a-z]/) { ... }
+end
+```
+
+O `underscore` do Rails converte `-` em `_`, e só então o `humanize` o vira
+espaço — daí `"X Men"`. O ModeShape copiou o **javadoc** do Rails mas escreveu o
+método sem a chamada a `underscore`. A doc descreve o Rails; o código, outra
+coisa.
+
+**Alcance.** Nenhum em execução: `titleCase` é código morto no pipeline (ver o
+alcance de I1) e o `InflectorTest` **não cobre o caso do hífen** — testa só
+entradas com `_`, onde os dois comportamentos coincidem. Foi por isso que o
+exemplo sobreviveu.
+
+**Alcance como armadilha.** É o risco real deste achado, e o motivo de estar
+catalogado apesar de não afetar comportamento: quem ler o javadoc e "consertar" o
+`humanize` para tratar `-` **muda a nomeação de entidade**. O `humanize` não é
+chamado pelo pipeline hoje, mas o `capitalize` — que é — compartilha com ele a
+premissa de que separador não-`_` passa intacto. Uma coleção `order-details`
+viraria `Order details` em vez de `Order-details`.
+
+**Decisão no porte: replicar o código, não o javadoc.** `title_case("x-men: the
+last stand")` devolve `"X-Men: The Last Stand"`, como o Java realmente faz. O
+docstring do porte não repete o exemplo falso.
+
+**Correção upstream.** Trocar o exemplo do javadoc pelo valor verdadeiro
+(`"X-Men: The Last Stand"`) — **não** mexer no código para fazê-lo casar com a
+doc: isso mudaria o comportamento de um método público por causa de um comentário
+errado. Se alguém quiser a semântica do Rails, é `titleCase(underscore(word))`, no
+chamador.
+
+---
+
 ## O que **não** é defeito
 
 Registrado para evitar que uma leitura futura os "corrija":
@@ -558,25 +719,38 @@ Ordem sugerida, do mais defensável ao mais invasivo:
    upstream não sustenta as garantias que promete.
 2. **#7** — correção trivial, o próprio autor diagnosticou no comentário, sem
    mudança de veredito em dado válido. Candidato óbvio a PR.
-3. **C3** — guarda de nulo em `compareNames`, ou anotação `@NonNull`. Não muda
+3. **I3** — corrigir o **exemplo do javadoc** do `titleCase` (o do hífen). Zero
+   risco: não toca em código. Vem antes de I2 e I1 porque é a única do catálogo
+   que, se ignorada, induz alguém a introduzir um defeito ao "consertar" o código
+   para casar com a doc.
+4. **I2** — guarda de nulo no `titleCase`. Uma linha, alinha o método ao contrato
+   dos outros nove da classe, e não muda nenhuma entrada válida. A mais barata das
+   que tocam em código.
+5. **I1** — guarda ordinal sobre o resto, não sobre o número. Corrige valores
+   objetivamente errados (`111st`), em método que ninguém do pipeline chama.
+   Merece um teste novo: o `InflectorTest` do upstream não cobre `x11`–`x13` fora
+   do primeiro. **Atenção ao alvo**: `I1`, `I2` e `I3` estão no `Inflector`, que é
+   cópia vendorizada do **ModeShape** — o PR mais útil vai para lá, e o U-Schema só
+   precisa reavaliar a cópia.
+6. **C3** — guarda de nulo em `compareNames`, ou anotação `@NonNull`. Não muda
    comportamento em modelo válido.
-4. **C6** — trocar `&&` por `^` em `attributes`, alinhando com os irmãos. Sem
+7. **C6** — trocar `&&` por `^` em `attributes`, alinhando com os irmãos. Sem
    efeito hoje; previne regressão se a coleção puder ser nula no futuro.
-5. **#6** — leitura genérica de `_id`. Muda o domínio de entrada aceito (aceita
+8. **#6** — leitura genérica de `_id`. Muda o domínio de entrada aceito (aceita
    `_id` não-`ObjectId`), com o custo semântico de timestamps zerados. Requer
    discussão sobre o que o `firstTimestamp` deve significar aí.
-6. **#8** — `combineMetadata` no colapso. **Muda números publicados.** Precisa
+9. **#8** — `combineMetadata` no colapso. **Muda números publicados.** Precisa
    vir acompanhado dos dados de antes/depois (é exatamente o que a Fase 3
    produz).
-7. **C1** — comparar todos os `isFeaturedBy` via multiset (correção já escrita,
-   ver a seção C1). Muda vereditos do harness de validação do próprio upstream,
-   mas só na direção segura: reprova a mais, nunca aprova a mais.
-8. **C2** — guarda de ciclo em `opposite`. Exige decidir a semântica de
-   comparação de referências mutuamente opostas antes de implementar.
-9. **C4** — pareamento máximo no lugar do guloso. O mais invasivo: toca quatro
-   comparadores. Alternativa mais barata: tornar `compareNames` uma relação de
-   equivalência (por exemplo, comparando formas canônicas singularizadas pelo
-   Inflector), o que resolveria a causa em vez do sintoma.
+10. **C1** — comparar todos os `isFeaturedBy` via multiset (correção já escrita,
+    ver a seção C1). Muda vereditos do harness de validação do próprio upstream,
+    mas só na direção segura: reprova a mais, nunca aprova a mais.
+11. **C2** — guarda de ciclo em `opposite`. Exige decidir a semântica de
+    comparação de referências mutuamente opostas antes de implementar.
+12. **C4** — pareamento máximo no lugar do guloso. O mais invasivo: toca quatro
+    comparadores. Alternativa mais barata: tornar `compareNames` uma relação de
+    equivalência (por exemplo, comparando formas canônicas singularizadas pelo
+    Inflector), o que resolveria a causa em vez do sintoma.
 
 Nada disso deve entrar no porte antes de a equivalência estrutural com o oráculo
 estar demonstrada. Um porte que "melhora" o original não pode ser validado

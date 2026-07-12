@@ -8,7 +8,6 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "inflection",
     "loguru",
     "neo4j",
     "pydantic",
@@ -73,7 +72,7 @@ pretty = true
 
 [[tool.mypy.overrides]]
 # PySpark e PyEcore não publicam type stubs completos; libere só onde falta.
-module = ["pyspark.*", "pyecore.*", "inflection.*"]
+module = ["pyspark.*", "pyecore.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

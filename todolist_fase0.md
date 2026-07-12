@@ -78,7 +78,16 @@
 
 - [x] Inventariar os JUnit do repo (`*/test/regression`, `*/test`, `documents/.../examples/tests`) e seus dados (`testSources/*.json`). → **`tests/regression/INVENTARIO.md`**: 37 `*Test.java`, ~2.500 linhas, classificados por bloco (regressão pura · presa a Mongo · golden-master · código morto).
 - [x] Mapear os golden-master de dataset para a **Fase 3**. → bloco C do inventário: `UserProfileTest`, `FacebookTest`, `CompaniesTest`, `TypeAndRefTest`, `MapReduceTimestampTest` (todos exigem banco → `@pytest.mark.integration`).
-- [ ] **Portar** os testes de regressão (critério de aceite módulo a módulo da Fase 1) — **dissolve-se na Fase 1**, test-alongside; a ordem está no inventário. Único desbloqueado hoje: `InflectorTest` (não depende da inferência nem de banco — fecha junto com a 0.6).
+
+**Saída:** inventário e mapa prontos — `tests/regression/INVENTARIO.md`.
+
+> **O porte dos testes de regressão não é tarefa desta fase.** Eles são o
+> **critério de aceite módulo a módulo da Fase 1** (e da 2.1, no caso dos dois do
+> Mongo): cada um se escreve *junto* com o módulo que valida, test-alongside. Não
+> há como portar o `CountTimestampTest` com o `SchemaInference` ainda em
+> `NotImplementedError`. A ordem de ataque está no inventário. Exceção:
+> **`InflectorTest`** não depende da inferência nem de banco — fecha junto com a
+> **0.6**, e está listado lá.
 
 > ⚠️ **Dois achados do inventário contrariam a suposição do roadmap** (detalhe em `INVENTARIO.md`):
 >
@@ -108,9 +117,26 @@
 
 > A capitalização/pluralização dos nomes de entidade precisa **casar** com o Java — senão os nomes de `EntityType` divergem e o harness acusa divergência em toda entidade.
 
-- [ ] Ler `Inflector.java` e listar as regras efetivamente usadas (capitalize, singular/plural).
-- [ ] Decidir entre uma lib Python (`inflection`/`inflect`) e uma reimplementação fiel das regras específicas.
-- [ ] Teste: aplicar a normalização aos nomes do Northwind e comparar com os nomes no XMI-oráculo.
+- [x] Ler `Inflector.java` e listar as regras efetivamente usadas. **É o Inflector do ModeShape vendorizado** (por sua vez inspirado no do Rails), em **duas cópias idênticas** (`doc2uschema/util/inflector` e `mongodb2uschema.spark/inflector` — diferem só no `package`): um porte serve às duas. A classe tem 10 métodos públicos, mas o pipeline só usa **três**: `capitalize` (nome da entidade raiz — `SchemaInference:183,188`), `singularize` (nome da entidade agregada — `SchemaInference:233`, `USchemaModelBuilder:194`, `ModelDirector:84,102`) e `pluralize` (`DefaultReferenceMatcherCreator:26`). `camelCase`/`underscore`/`humanize`/`titleCase`/`ordinalize` são **código morto** no pipeline — portados mesmo assim, porque são o que o `InflectorTest` cobre.
+- [x] Decidir entre uma lib Python (`inflection`/`inflect`) e uma reimplementação fiel. **Decidido: reimplementação fiel.** As regras do Java são uma lista **ordenada** de ~50 regexes com semântica de inserção-na-frente (`LinkedList.addFirst`), e a saída depende dessa ordem: `pluralize("human")` → `"humen"` (a regra irregular `(m)an$` casa no fim de qualquer palavra). Nenhuma lib reproduz isso — o `inflection` é um porte do Rails **moderno**, não do snapshot que o ModeShape copiou. Usar lib trocaria nomes de `EntityType` e quebraria a equivalência. → **`inflection` removido** das dependências de runtime, do override do `mypy` e das *Key dependencies* do `CLAUDE.md` (que agora traz a nota "o Inflector é reimplementação, não lib", para ninguém reintroduzi-la).
+- [x] **Porte do módulo** (`src/uschema/naming/inflector.py`) — **completo, 24 de 24 passos.**
+  - [x] **Camada de regex** (infra): `_to_python_replacement` (traduz `$1` do Java → `\g<1>` do `re`, escapando a barra literal **antes** de introduzir os retrovisores), `_Rule` (compila com `IGNORECASE | re.ASCII`; `search` + `sub` = o `find()` + `replaceAll()` do Java) e `replace_all_with_uppercase`. Conferida contra as regras reais: `octopi`, `wives`, `elves`, `women`, `indices`; e contra o `shouldReplaceAllWithUppercase` do JUnit (`hEllO`, `hLlo`).
+  - [x] **Tabela de regras** (`_initialize`) transcrita literalmente do Java: 22 plurais + 29 singulares + 6 irregulares + 8 incontáveis → **28 regras de plural, 35 de singular** depois da expansão dos irregulares.
+  - [x] **Registro de regras**: `__init__` (dois construtores do Java fundidos num parâmetro opcional; cópia **rasa** no ramo do `clone`), `add_pluralize`/`add_singularize` (**`insert(0, …)`** — o `addFirst` do Java: a ordem de consulta é a **inversa** da de registro, e é ela que faz a irregular vencer a genérica `$ → s`), `add_irregular`, `add_uncountable`, `is_uncountable`.
+  - [x] **`pluralize`** — validado contra os 83 pares do `InflectorTest`: **83/83**, mais a idempotência (pluralizar um plural não o altera).
+  - [x] **`singularize`** (o mesmo laço, sobre `_singulars`, sem a sobrecarga de `count`). A guarda `vazio or is_uncountable` **antes** do laço é o que faz `sheep`/`series`/`news` sobreviverem à regra genérica `s$ → ""`.
+  - [x] **`capitalize`** — **a terceira das três usadas pelo pipeline**. É o `str.capitalize()` do Python (primeira maiúscula, **resto minúsculo**), depois do `strip()` — e **não** o `str.title()`, que subiria a letra após cada `_` e renomearia entidade (`Inventory_Transaction_Types`). O ramo de 1 caractere do Java (linha 393) coincide e ficou implícito.
+  - [x] Código morto no pipeline, portado só porque o `InflectorTest` cobre: `camel_case` (+ as duas fachadas), `underscore`, `humanize`, `title_case`, `ordinalize`. No `camel_case`, o ramo *lower* monta a saída com a primeira letra minúscula **+ o resto vindo do ramo Upper** — é o Upper que já comeu os `_` e subiu as iniciais internas.
+  - [x] Utilidades: `clone`, property `uncountables` (devolve o conjunto **vivo**), `clear` (esvazia **no lugar**, para honrar esse contrato), `get_instance` (singleton de módulo, criado no import).
+- [x] **Decisões de fidelidade** tomadas ao portar (registradas na seção "Fidelidade"/"Desvios" do módulo):
+  - [x] **`re.ASCII` no módulo inteiro** (constante `_JAVA_FLAGS`). O `Pattern` do Java, sem `UNICODE_CHARACTER_CLASS`/`UNICODE_CASE`, é uma engine **ASCII**: `\d` é `[0-9]`, `\b` usa `[a-zA-Z_0-9]`, e `CASE_INSENSITIVE` só dobra caixa ASCII. O `re` do Python é Unicode por padrão. Verificado empiricamente: nas ~50 regras a diferença só aparece no `ſ` (irrelevante), mas em `underscore` (`\d`) e `title_case` (`\b`) ela é trivial de disparar com acento — `title_case("ação")` dá `Ação` no Python e **`AçãO`** no Java. Sem a flag, o teste portado passaria verde afirmando um valor que o oráculo nunca produz.
+  - [x] **`ordinalize` replica o bug `I1`** (`bugs_originais.md`): o guarda de 11–13 testa o número, não o resto → `ordinalize(111) == "111st"`. Teste fixa o valor **errado**, citando a entrada. O `% 10` sai de `math.fmod`, não do `%` do Python: em negativo o resto do Java tem o sinal do dividendo (`-9`), o do Python, o do divisor (`1`).
+  - [x] **`title_case(None)` devolve `None`, não replica o NPE (`I2`).** Único desvio deliberado do porte: a exceção do Java é uma linha faltando, não semântica. Justificado em `bugs_originais.md`.
+  - [x] **`humanize` não trata hífen — portamos o código, não o javadoc (`I3`, achado novo).** O javadoc do `titleCase` promete `"x-men: the last stand"` → `"X Men: …"`, mas o exemplo veio do `titleize` do Rails (que chama `underscore` antes) e o método ModeShape não faz esse passo: o Java real devolve `"X-Men: …"`. Não afeta comportamento (o `titleCase` é código morto e o `InflectorTest` não cobre hífen), mas é armadilha: "consertar" o `humanize` para tratar `-` mudaria a nomeação de entidade (`order-details` → `Order details`).
+- [x] **Portar o `InflectorTest`** (394 linhas, `doc2uschema/test/regression/`) → **`tests/unit/test_inflector.py`, 205 casos, 205 verdes.** Cada bloco `@Test` do JUnit virou um `@pytest.mark.parametrize` (uma falha aponta o par exato, em vez de derrubar o bloco na primeira asserção). Os ~90 pares passam pelas **4** asserções do helper `singularToPlural` (ida, volta e idempotência dos dois lados) e os 12 casos de camelCase pelo **round-trip** `underscore(camelizado) == original` — juntos, provam que a ordem das ~50 regras foi transcrita certo: bastaria uma regra registrada fora de ordem para algum dos ~360 asserts cair. Mais 2 testes que fixam bug de propósito (`ordinalize(111) == "111st"`, `title_case(None) is None`) e 1 do singleton.
+- [x] Teste: aplicar a normalização aos nomes do Northwind e comparar com os nomes no XMI-oráculo. → **`tests/unit/test_inflector_northwind.py`, 5 verdes.** As 3 regras de nomeação do pipeline, aplicadas às **17 coleções** do dump, reproduzem **exatamente** as 19 `EntityType` de `resources/mongodb/model_northwind.xmi`: as 17 `capitalize`das (`orders` → `Orders`; `inventory_transaction_types` → `Inventory_transaction_types` — `capitalize` **não** faz camelCase) + `Detail` (`capitalize(singularize("details"))`) + `_id` (`capitalize("_id")`, ponto fixo). A lista de coleções é transcrita do dataset, não derivada do XMI (seria circular). Inclui uma guarda de regressão que falha se alguém trocar `capitalize` por `title_case`.
+
+**Saída:** `src/uschema/naming/inflector.py` (porte completo, sem `NotImplementedError`) + 210 testes verdes (`test_inflector.py` · `test_inflector_northwind.py`).
 
 ---
 

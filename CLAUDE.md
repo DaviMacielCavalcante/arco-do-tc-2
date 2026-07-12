@@ -63,7 +63,6 @@ Comandos comuns:
 - **pyspark** — extração distribuída (Fase 2); só RDD de baixo nível (`map`/`reduceByKey`/`flatMap`), sem DataFrame SQL. **Fixa o teto de Python em 3.12.**
 - **pymongo** — leitura de `dict`/`bson` do MongoDB (o `_id` é lido genericamente — bug #6).
 - **neo4j** — driver do paradigma grafo (validar a versão do connector Spark contra o Neo4j-alvo).
-- **inflection** — base do Inflector (Fase 0.6); regras específicas do Java sobrescritas onde divergirem.
 - **pydantic** — validação/esquemas de configuração.
 - **loguru** — logging estruturado.
 
@@ -190,5 +189,6 @@ SonarQube Cloud via <https://sonarcloud.io>).
 - **Determinismo é load-bearing.** Ordenação de campos, `__eq__`/`__hash__` estrutural e ordem das variações têm de casar com o Java — divergência aqui quebra a equivalência com o oráculo. Cubra com testes desde já.
 - **`ArraySC.__eq__` ignora o tamanho do array** (decisão deliberada do autor original, na origem do bug #8) — replicar essa noção **junto** com a correção `combineMetadata` ao colapsar variações.
 - **Bugs corrigidos por construção** (o original corrigia por patch): **#6** `_id` genérico (não assumir `ObjectId`), **#7** array vazio (checar `len==0` antes de `inners[0]`), **#8** contagem sob array de tamanho variável (combinar `meta` ao colapsar). Onde um teste JUnit codificava o bug, afirme o valor **corrigido**.
+- **O Inflector é reimplementação, não lib.** Nenhuma lib Python (`inflection`, `inflect`) reproduz o Inflector do ModeShape que o Java vendoriza: as regras são uma lista **ordenada** com semântica de inserção-na-frente, e a saída depende dessa ordem (`pluralize("human")` → `"humen"`). Trocar por lib renomearia `EntityType` e quebraria a equivalência. Não reintroduza a dependência.
 - **Fora de escopo** (não portar): backends `cassandra`/`hbase`/`redis`/`sql`; OCL (ausente no metamodelo); codegen EMF; editor Sirius (UI). A **metacamada** é trabalho futuro.
 - **Paralelismo do time:** a Fase 1 (núcleo de inferência) e a Fase 2 (extratores) avançam em paralelo e se encontram no formato da tripla (`extractors/triple.py`); o trabalho é compartilhado entre os autores, sem dono fixo por fase.
