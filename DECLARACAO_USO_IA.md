@@ -43,6 +43,37 @@ que a IA foi empregada:
   a escolha do layout de pacote com `src/`.
 - **Organização de tarefas.** Apoio na estruturação e atualização das listas de
   tarefas (`todolist_fase0.md`).
+- **Oráculo Java em Docker (`oracle/`, Fase 0.5).** Escrita do `Dockerfile`,
+  `entrypoint.sh` e dos `.patch` (`#1`, `#4`, `#5`, `#6`, `#7` — numeração de
+  `bugs_originais.md`), com pedido e revisão explícitos dos autores, e com
+  correção de um build real (`docker build`/`docker run` testados de
+  verdade contra o dataset Northwind, não só simulados — o que revelou dois
+  crashes reais, `#6` e `#7`, corrigidos nessa ordem). Diferente do código de
+  implementação Python (§2.2), essa é infraestrutura de *build*/
+  empacotamento do código Java **de terceiros** (`modelum/uschema*`), não
+  lógica do porte em si — `#1`, `#4`, `#5` corrigem incompatibilidades de
+  build (Guice, `Path.of`/JDK 8, hardcode de máquina); `#6` e `#7` corrigem
+  bugs de corretude que **derrubam o job inteiro** (`_id` não-`ObjectId`;
+  array vazio indexado antes do teste de tamanho), aplicados no oráculo
+  porque sem eles não há XMI algum pra comparar — decisão já prevista em
+  `bugs_originais.md`. O bug `#8`, que não derruba o job (só distorce a
+  contagem), continua corrigido **apenas** no porte Python, por decisão
+  deliberada (ver `oracle/README.md`). Também configurada e testada de
+  verdade: a suíte JUnit original dentro da imagem (`add-test-source` +
+  dependências de teste no `pom.xml` de `oracle/uschema-build/runner`;
+  65/76 passam, causa raiz dos 11 restantes identificada lendo o
+  código-fonte real — nenhum é bug do empacotamento, ver
+  `oracle/docker_explain.md`) e o caminho Neo4j de ponta a ponta. Também
+  unificados os dois builds Maven separados (Mongo/Neo4j) num só, depois de
+  testar que migrar o Mongo de Spark 2.4.1/Scala 2.11 pra 3.0.1/Scala 2.12
+  (a versão já usada pelo Neo4j) produz saída idêntica (`compare()`, Fase
+  0.3) e não colide com as dependências transitivas do Neo4j; e
+  simplificado o contrato do `entrypoint.sh` de variáveis de ambiente
+  (`KIND`/`DB_NAME`) pra argumentos de linha de comando (`--db`/`--kind`),
+  batendo com o desenho original do plano (`fase0_fundacao_oraculo.md`).
+  Mudanças de infraestrutura de build, pedidas e revisadas explicitamente
+  pelos autores, com backup da versão anterior guardado por eles fora deste
+  repo antes da alteração.
 
 ### 2.2 Delimitação — o que NÃO foi gerado por IA
 

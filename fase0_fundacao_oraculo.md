@@ -93,7 +93,7 @@ Congela o ambiente frágil que já funciona numa imagem, cuja **única saída é
 | Patch | Arquivo | Correção |
 |---|---|---|
 | #1 | binding Guice (`MongoDB2USchemaMain`) | `bind(FeatureAnalyzer.class).to(DefaultFeatureAnalyzer.class)` |
-| #2 | pom `doc2uschema` | Jackson → 2.6.7.1 (Mongo) / databind → 2.10.5 (Neo4j) |
+| #2 | pom `doc2uschema` | Jackson → 2.10.5 (unificado; ver `oracle/docker_explain.md`) |
 | #3 | runtime | JDK 8 (Spark 2.4/3.0.1 não lê bytecode > major 52) |
 | #4 | `MongoDB2USchema.java`, `EcoreModelIO.java`, `Neo4j2USchema.java`, `Json2USchemaModel.java` | `Path.of(...)` → `Paths.get(...)` |
 | #5 | `Neo4j2USchemaMain.java` | desfazer hardcode/supressão/caminho Hadoop |
@@ -101,13 +101,17 @@ Congela o ambiente frágil que já funciona numa imagem, cuja **única saída é
 | #7 | `USchemaModelBuilder.java` | `get(0)` depois de `size()==0` (array vazio) |
 | #8 | `SchemaInference.java` | `combineMetadata` ao colapsar variações (contagem) |
 
-**Contrato:** `docker run -v $PWD/out:/output extrator-uschema --db <nome> --kind <mongodb|neo4j>` → grava `model.xmi` em `/output`. Rede: usar `--network=host` (Linux) para alcançar bancos no host; memória ≥ ~5–6 GB (Spark pede ~4 GB driver/executor).
+**Contrato (implementado):** `docker run -v $PWD/out:/output extrator-uschema --db <nome> --kind <mongodb|neo4j>` → grava `<nome>.xmi` em `/output` (`entrypoint.sh` traduz `--db`/`--kind` pro `main` Java certo — os `main` Java originais não aceitam isso diretamente, ver `oracle/docker_explain.md`; `MONGO_URL`/`MONGO_COLLECTIONS`, exigidas só no caso Mongo, continuam em variável de ambiente). Rede: `--network=host` para alcançar bancos no host; memória ≥ ~5–6 GB.
 
 **Tarefas:**
-- [ ] Escrever o `Dockerfile` (base JDK 8 + Spark + conectores + build com os 8 `.patch`).
-- [ ] **Rodar a suíte JUnit existente** dentro da imagem para obter o baseline verde e extrair dados/saídas de teste reaproveitáveis.
-- [ ] Validar que a imagem regenera `model_northwind.xmi` (e os XMIs de escala) idênticos estruturalmente aos já gerados.
-- [ ] Versionar `Dockerfile` + `.patch` (artefato de reprodutibilidade citável no TCC).
+- [x] Escrever o `Dockerfile` (base JDK 8, build único via `uschema-build/runner` + patches #1/#4/#5/#6/#7; unificado a partir de dois builds Mongo/Neo4j separados, ver `oracle/docker_explain.md`).
+- [x] Rodar a suíte JUnit existente dentro da imagem — 65/76 passam; os 11
+      que falham são defeitos pré-existentes do repo original, causa raiz
+      identificada (detalhe em `oracle/docker_explain.md`).
+- [x] Validar que a imagem regenera `model_northwind.xmi` estruturalmente
+      idêntico ao gabarito — `compare()` (Fase 0.3): `equivalent: True`,
+      zero divergências fatais.
+- [x] Versionar `Dockerfile` + `.patch` (em `oracle/`, committável).
 
 ## 0.6 Inflector
 

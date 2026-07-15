@@ -1,0 +1,19 @@
+--- a/es.um.uschema.mongodb2uschema/src/es/um/uschema/mongodb2uschema/main/MongoDB2USchemaMain.java
++++ b/es.um.uschema.mongodb2uschema/src/es/um/uschema/mongodb2uschema/main/MongoDB2USchemaMain.java
+@@ -17,6 +17,8 @@
+ import es.um.uschema.doc2uschema.util.config.DefaultSchemaInferenceConfig;
+ import es.um.uschema.doc2uschema.util.config.SchemaInferenceConfig;
+ import es.um.uschema.doc2uschema.process.util.DefaultStructuralVariationSorter;
++import es.um.uschema.doc2uschema.process.util.FeatureAnalyzer;
++import es.um.uschema.doc2uschema.process.util.DefaultFeatureAnalyzer;
+ import es.um.uschema.USchema.EntityType;
+ import es.um.uschema.mongodb2uschema.MongoDB2USchema;
+ import es.um.uschema.mongodb2uschema.utils.Constants;
+@@ -65,6 +67,7 @@
+ 	  // Default config
+ 	  bind(StructuralVariationSorter.class).to(DefaultStructuralVariationSorter.class);
+ 	  bind(OptionalTagger.class).to(DefaultOptionalTagger.class);
++	  bind(FeatureAnalyzer.class).to(DefaultFeatureAnalyzer.class);
+ 	  bind(new TypeLiteral<ReferenceMatcherCreator<EntityType>>() {}).to(DefaultReferenceMatcherCreator.class);
+ 	
+ 	  // Schema inference
