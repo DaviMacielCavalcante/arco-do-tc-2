@@ -1,0 +1,55 @@
+--- a/es.um.uschema.utils/src/es/um/uschema/utils/EcoreModelIO.java
++++ b/es.um.uschema.utils/src/es/um/uschema/utils/EcoreModelIO.java
+@@ -4,6 +4,7 @@
+ import java.io.IOException;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
++import java.nio.file.Paths;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+@@ -89,7 +90,7 @@
+   @Deprecated
+   public <T> T load(Class<T> c, String inputPath)
+   {
+-    return load(c, Path.of(inputPath));
++    return load(c, Paths.get(inputPath));
+   }
+ 
+   @SuppressWarnings("unchecked")
+--- a/es.um.uschema.utils/test/es/um/uschema/utils/ModelIOTest.java
++++ b/es.um.uschema.utils/test/es/um/uschema/utils/ModelIOTest.java
+@@ -3,6 +3,7 @@
+ //import static org.junit.Assert.*;
+ 
+ import java.nio.file.Path;
++import java.nio.file.Paths;
+ 
+ import org.junit.Before;
+ import org.junit.Test;
+@@ -14,7 +15,7 @@
+ public class ModelIOTest
+ {
+   private EcoreModelIO uSchemaIO;
+-  private Path modelPath = Path.of("../es.um.uschema.models/stackoverflow/stackoverflow.xmi");
++  private Path modelPath = Paths.get("../es.um.uschema.models/stackoverflow/stackoverflow.xmi");
+   private USchemaSerializer serializer;
+   private USchemaFactory factory;
+ 
+@@ -31,7 +32,7 @@
+   {
+     USchema schema = uSchemaIO.load(USchema.class, modelPath);
+     System.out.println(serializer.serialize(schema));
+-    uSchemaIO.write(schema, Path.of("../es.um.uschema.models/test.xmi"));
++    uSchemaIO.write(schema, Paths.get("../es.um.uschema.models/test.xmi"));
+   }
+ 
+   @Test
+@@ -46,6 +47,6 @@
+     var.getFeatures().add(factory.createAttribute("Attr2", factory.createPrimitiveType("Number")));
+ 
+     System.out.println(serializer.serialize(schema));
+-    uSchemaIO.write(schema, Path.of("../es.um.uschema.models/test.xmi"));
++    uSchemaIO.write(schema, Paths.get("../es.um.uschema.models/test.xmi"));
+   }
+ }

@@ -104,12 +104,17 @@
 
 > Papel reduzido: (a) rodar a suíte JUnit e obter o *baseline verde*; (b) gerar o XMI-gabarito só para datasets sem golden-master (Sakila, variações de escala). **Não entra na entrega** (a ferramenta portada é Python puro); agrega reprodutibilidade, não funcionalidade.
 
-- [ ] Escrever o `Dockerfile` (base JDK 8 + Spark + conectores fixados: mongo-spark 3.0.1 / neo4j-spark 2.4.5-M2 + build da `uschema-inference` com os 8 `.patch` auditáveis).
-- [ ] **Rodar a suíte JUnit** dentro da imagem para o baseline verde e extrair dados/saídas de teste reaproveitáveis.
-- [ ] Validar que a imagem regenera `model_northwind.xmi` (e os XMIs de escala) **estruturalmente idênticos** aos já gerados.
-- [ ] Versionar `Dockerfile` + `patches/` (artefato de reprodutibilidade citável no TCC).
+- [x] Escrever o `Dockerfile` (base JDK 8 + Maven + build único — mongo-spark 3.0.1/Scala 2.12, neo4j-spark 2.4.5-M2/Spark 3.0.1/Scala 2.12 — + `entrypoint.sh` + patches `#1`/`#4`/`#5`/`#6`/`#7` verificados byte a byte). `#2`/`#3` satisfeitos estruturalmente (não precisam de `.patch` nesta build); `#8` deliberadamente fora — ver `oracle/README.md`.
+- [x] Unificar os dois builds Maven separados (Mongo migrado de Spark 2.4.1/Scala 2.11 pra 3.0.1/Scala 2.12) num só (`uschema-build/runner`), testado sem colisão de dependências transitivas e com saída idêntica aos builds antigos via `compare()`; contrato simplificado de `KIND`/`DB_NAME` (env vars) pra `--db`/`--kind` (CLI args), batendo com o desenho original do plano. Detalhe em `oracle/docker_explain.md`.
+- [x] `docker build` real testado (2026-07-15, Docker Desktop/Windows) — builda a imagem `extrator-uschema` do zero.
+- [x] `docker run` real testado contra MongoDB/Northwind (17 coleções) — gerou `out/northwind.xmi` com sucesso, depois de corrigir `dependency:go-offline` incompleto, os crashes reais de `#6`/`#7` (não estavam previstos como patch na primeira versão) e a pasta `outputs/` faltando no `entrypoint.sh`.
+- [x] **Rodar a suíte JUnit** dentro da imagem — **65/76 passam.** Os 11 que falham têm causa raiz identificada lendo o código-fonte real do commit pinado (não suposição), e nenhum aponta pra um problema do empacotamento: `OptionalTest` (helper de teste com o mesmo bug do patch #1, nunca corrigido no original), `ModelIOTest` (2, dependência de um projeto irmão nunca clonado), `CompareDataTypeTest`/`ComparePropertyTest` (9, teste e `USchemaFactory` já inconsistentes entre si no repo original — o teste passa `null` esperando sucesso, a fábrica valida e lança `IllegalArgumentException`). Detalhe completo em `oracle/docker_explain.md`.
+- [x] Validar `out/northwind.xmi` contra `resources/mongodb/model_northwind.xmi` via `compare()` (Fase 0.3): `equivalent: True`, zero divergências fatais; as 8 não-fatais (todas em `Orders`/`Purchase_orders`) batem com a assinatura do bug #8, deliberadamente sem patch no oráculo.
+- [x] Testar `docker run` no caminho Neo4j (`--kind neo4j`) de ponta a ponta — grafo mínimo (`User`/`Movie`, `WATCHED`/`FAVORITE`) via `cypher-shell`, `neo4j.xmi` gerado com sucesso (sem gabarito comparável, só confirmação de que o caminho roda).
+- [x] Versionar `Dockerfile` + `entrypoint.sh` + `patches/` (artefato de reprodutibilidade citável no TCC).
 
-> **Contrato:** `docker run -v $PWD/out:/output extrator-uschema --db <nome> --kind <mongodb|neo4j>` → grava `model.xmi` em `/output`. Rede: `--network=host` (Linux); memória ≥ ~5–6 GB.
+> **Contrato real** (o `main` Java não aceita `--db`/`--kind` diretamente, o `entrypoint.sh` faz a ponte):
+> `docker run --network=host -v $PWD/out:/output [-e MONGO_URL=... -e MONGO_COLLECTIONS=...] extrator-uschema --db <nome> --kind <mongodb|neo4j>` → grava `<nome>.xmi` em `/output`. Memória ≥ ~5–6 GB. `MONGO_URL`/`MONGO_COLLECTIONS` só no caso Mongo, continuam em variável de ambiente. Detalhe completo em `oracle/README.md`.
 
 ---
 
@@ -145,6 +150,6 @@
 - [x] Round-trip do `model_northwind.xmi` fecha (recarrega estruturalmente idêntico).
 - [x] Harness de equivalência funcionando (acerta A==A e detecta divergência injetada), com a semântica espelhada do `USchemaCompareMain`.
 - [x] Suíte JUnit inventariada — regressão mapeada para a Fase 1, golden-master para a Fase 3. → `tests/regression/INVENTARIO.md`
-- [ ] Imagem Docker roda o baseline JUnit e regenera os XMIs-gabarito de forma reproduzível.
+- [x] Imagem Docker roda o baseline JUnit e regenera os XMIs-gabarito de forma reproduzível.
 
 **Entregáveis:** `src/uschema/metamodel/` (metamodelo + round-trip XMI) · `src/uschema/validation/equivalence.py` (harness) · inventário/mapa dos testes JUnit a portar (`tests/regression/`) · `oracle/Dockerfile` + `oracle/patches/` · `src/uschema/naming/` (Inflector).

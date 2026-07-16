@@ -1,0 +1,42 @@
+--- a/es.um.uschema.neo4j2uschema/src/es/um/uschema/neo4j2uschema/main/Neo4j2USchemaMain.java
++++ b/es.um.uschema.neo4j2uschema/src/es/um/uschema/neo4j2uschema/main/Neo4j2USchemaMain.java
+@@ -39,18 +39,29 @@
+ 	// Huge -> 109724ms
+ 	public static void main(String[] args) throws IOException 
+ 	{
+-		System.setProperty(HADOOP_HOME_DIR, HADOOP_DIR);
+-		
+-		Logger.getRootLogger().setLevel(Level.OFF);
+-		System.setErr(new java.io.PrintStream(new java.io.OutputStream() {@Override public void write(int b) {}}) {});		
+-		
++		// hadoop.home.dir hardcoded pra máquina do autor original; removido.
++		// Detalhe: oracle/docker_explain.md, patch #5.
++		// System.setProperty(HADOOP_HOME_DIR, HADOOP_DIR);
++
++		// Supressão de log/stderr removida — mascarava erros reais de conexão.
++		// Logger.getRootLogger().setLevel(Level.OFF);
++		// System.setErr(new java.io.PrintStream(new java.io.OutputStream() {@Override public void write(int b) {}}) {});
++
++		String databaseName = args.length > 0 ? args[0] : DATABASE_NAME;
++
++		if (databaseName.contains("/") || databaseName.contains("\\") || databaseName.contains(".."))
++		{
++			System.err.println("Nome de banco invalido: " + databaseName);
++			System.exit(1);
++		}
++
+ 		long start = System.currentTimeMillis();
+-		
+-		Neo4j2USchema neo4j2uschema = new Neo4j2USchema(SAMPLING_RATIO, DATABASE_BOLT, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME);
++
++		Neo4j2USchema neo4j2uschema = new Neo4j2USchema(SAMPLING_RATIO, DATABASE_BOLT, DATABASE_USER, DATABASE_PASSWORD, databaseName);
+ 		neo4j2uschema.process();
+-		if (WRITE_INTERMEDIATE_JSON) 
+-		  neo4j2uschema.saveJsonToFile(OUTPUTS_FOLDER + DATABASE_NAME + JSON_EXTENSION);
+-		neo4j2uschema.toXMI(OUTPUTS_FOLDER + DATABASE_NAME + XMI_EXTENSION);
++		if (WRITE_INTERMEDIATE_JSON)
++		  neo4j2uschema.saveJsonToFile(OUTPUTS_FOLDER + databaseName + JSON_EXTENSION);
++		neo4j2uschema.toXMI(OUTPUTS_FOLDER + databaseName + XMI_EXTENSION);
+ 
+ 		long executionTime = System.currentTimeMillis() - start;
+ 		showTime(executionTime);

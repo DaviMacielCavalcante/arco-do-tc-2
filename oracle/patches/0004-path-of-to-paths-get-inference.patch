@@ -1,0 +1,79 @@
+--- a/es.um.uschema.mongodb2uschema/src/es/um/uschema/mongodb2uschema/MongoDB2USchema.java
++++ b/es.um.uschema.mongodb2uschema/src/es/um/uschema/mongodb2uschema/MongoDB2USchema.java
+@@ -2,6 +2,7 @@
+ 
+ import java.io.IOException;
+ import java.nio.file.Path;
++import java.nio.file.Paths;
+ import java.util.List;
+ import java.util.stream.Collectors;
+ 
+@@ -54,7 +55,7 @@
+ 		IAJElement root = adapter.wrap(array);
+ 		USchema schema = builder.build(uSchemaFactory, databaseName, si.infer(root.asArray()));
+ 		EcoreModelIO uSchemaWriter = new EcoreModelIO();
+-		uSchemaWriter.write(schema, Path.of("./outputs/model.xmi"));
++		uSchemaWriter.write(schema, Paths.get("./outputs/model.xmi"));
+ 	}
+ 
+ 	private List<JsonNode> processEntity(String databaseUri, String databaseName, String collectionName)
+--- a/es.um.uschema.neo4j2uschema/src/es/um/uschema/neo4j2uschema/Neo4j2USchema.java
++++ b/es.um.uschema.neo4j2uschema/src/es/um/uschema/neo4j2uschema/Neo4j2USchema.java
+@@ -7,6 +7,7 @@
+ import java.io.FileWriter;
+ import java.io.IOException;
+ import java.nio.file.Path;
++import java.nio.file.Paths;
+ import java.util.Map;
+ 
+ import es.um.uschema.USchema.USchema;
+@@ -62,7 +63,7 @@
+ 		new File(outputUri.substring(0, outputUri.lastIndexOf(SLASH))).mkdirs();
+ 		
+ 		EcoreModelIO uSchemaWriter = new EcoreModelIO();
+-		uSchemaWriter.write(uSchema, Path.of(outputUri));
++		uSchemaWriter.write(uSchema, Paths.get(outputUri));
+ 	}
+ 	
+ }
+--- a/es.um.uschema.neo4j2uschema/src/es/um/uschema/neo4j2uschema/model/Json2USchemaModel.java
++++ b/es.um.uschema.neo4j2uschema/src/es/um/uschema/neo4j2uschema/model/Json2USchemaModel.java
+@@ -4,6 +4,7 @@
+ 
+ import java.io.File;
+ import java.nio.file.Path;
++import java.nio.file.Paths;
+ import java.util.Map;
+ 
+ import org.json.JSONObject;
+@@ -54,7 +55,7 @@
+ 		new File(outputUri.substring(0, outputUri.lastIndexOf(SLASH))).mkdirs();
+ 		
+ 		EcoreModelIO uSchemaWriter = new EcoreModelIO();
+-		uSchemaWriter.write(modelRepository.getUSchema(), Path.of(outputUri));
++		uSchemaWriter.write(modelRepository.getUSchema(), Paths.get(outputUri));
+ 	}
+ 	
+ 	public USchema getUSchema() {
+--- a/es.um.uschema.doc2uschema/src/es/um/uschema/doc2uschema/m2m/USchemaToDocumentDb.java
++++ b/es.um.uschema.doc2uschema/src/es/um/uschema/doc2uschema/m2m/USchemaToDocumentDb.java
+@@ -1,6 +1,7 @@
+ package es.um.uschema.doc2uschema.m2m;
+ 
+ import java.nio.file.Path;
++import java.nio.file.Paths;
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.List;
+@@ -36,9 +37,9 @@
+     USchemaToDocumentDb var1 = new USchemaToDocumentDb();
+ 
+     EcoreModelIO modelIO = new EcoreModelIO();
+-    USchema schema = modelIO.load(USchema.class, Path.of("json/dummy.xmi"));
++    USchema schema = modelIO.load(USchema.class, Paths.get("json/dummy.xmi"));
+     var1.adaptToDocumentDb(schema);
+-    modelIO.write(schema, Path.of("json/dummy2.xmi"));
++    modelIO.write(schema, Paths.get("json/dummy2.xmi"));
+   }
+ 
+   public USchemaToDocumentDb()

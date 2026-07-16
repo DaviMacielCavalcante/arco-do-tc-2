@@ -1,0 +1,12 @@
+--- a/es.um.uschema.mongodb2uschema/src/es/um/uschema/mongodb2uschema/utils/Helpers.java
++++ b/es.um.uschema.mongodb2uschema/src/es/um/uschema/mongodb2uschema/utils/Helpers.java
+@@ -63,7 +63,8 @@
+ 	 */
+ 	public static Tuple2<Document, Tuple3<Long, Long, Integer>> generateDocumentPair(Document doc)
+ 	{
+-		long timestamp = doc.getObjectId("_id").getTimestamp();
++		Object id = doc.get("_id");
++		long timestamp = (id instanceof ObjectId) ? ((ObjectId) id).getTimestamp() : 0L;
+ 		Tuple3<Long, Long, Integer> data = new Tuple3<Long, Long, Integer>(timestamp,timestamp,1);
+ 
+ 		return new Tuple2<Document, Tuple3<Long, Long, Integer>> (simplify(doc), data);
