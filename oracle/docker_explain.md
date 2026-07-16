@@ -36,16 +36,33 @@ não só verificadas em teoria ou por inspeção de código.
 
 ## Commit pinado, não branch
 
-`ARG USCHEMA_COMMIT`/`USCHEMA_INFERENCE_COMMIT` são obrigatórios — o build
-falha cedo, com mensagem clara, se não forem passados. A branch default dos
-dois repositórios upstream é `main` (não `master`; `git ls-remote` sem filtro
-de branch resolve os dois via `HEAD`).
+`ARG USCHEMA_COMMIT`/`USCHEMA_INFERENCE_COMMIT` trazem como **default** os dois
+SHAs contra os quais este oráculo foi de fato validado:
+
+| Repositório | SHA pinado |
+|---|---|
+| `modelum/uschema` | `6dfd6b4a6c04c67e49a80fb6cb6da9dd0f0f0f8c` |
+| `modelum/uschema-inference` | `0f8f58c31f7661ce9be7333a1f34b9a05321a993` |
 
 O pin deve ser **explícito**, nunca implícito num "a branch não costuma
 mudar": um commit novo em qualquer um dos dois repos, mesmo que raro,
 poderia alterar silenciosamente o que o TCC cita como oráculo de referência.
 Reprodutibilidade citável exige apontar pra um SHA fixo, não para "o que
 estava em `main` no dia em que alguém rodou `docker build`".
+
+Por isso o SHA fica **registrado no `Dockerfile`**, e não resolvido na hora do
+build via `git ls-remote` — que devolve a ponta da branch do dia, exatamente o
+"o que estava em `main`" que o parágrafo acima recusa. Tudo que esta fase
+afirma está amarrado a esses dois commits: os patches aplicando sem
+*fuzz*/*reject*, o baseline JUnit 65/76 e o `northwind.xmi` saindo equivalente
+ao gabarito.
+
+Exigir `--build-arg` sem default (como a primeira versão fazia) força um SHA
+**qualquer** a ser informado: garante explicitude, não reprodutibilidade. Com o
+default, build sem argumento nenhum reproduz o oráculo citado, e avançar o pin
+segue sendo ato deliberado — sobrescrever o `ARG`, revalidando o conjunto. A
+branch default dos dois repositórios upstream é `main` (não `master`), caso
+precise.
 
 **Mesmo princípio aplicado à imagem base.** `FROM maven:3.9-eclipse-temurin-8`
 sozinho é uma *tag*, não um artefato imutável — o mantenedor pode
@@ -491,7 +508,9 @@ com comentário mínimo, razão completa só neste documento.
   (bug do `MSYS_NO_PATHCONV` no Windows/Git Bash). Custo/risco de
   implementação alto, ganho de segurança baixo pro caso de uso real.
 - **Manifesto separado para os SHAs aprovados** (`USCHEMA_COMMIT`/
-  `USCHEMA_INFERENCE_COMMIT`). O `Dockerfile` já falha cedo, de propósito,
-  se `--build-arg` não for passado — indireção por manifesto não elimina
-  essa exigência, só adiciona uma camada pra um componente que já é
-  opcional e fora da entrega.
+  `USCHEMA_INFERENCE_COMMIT`) — como **arquivo à parte**. A preocupação de
+  fundo (registrar quais SHAs são os aprovados) era procedente e foi
+  atendida: os SHAs validados agora são o **default do `ARG`** no
+  `Dockerfile`, documentados em "Commit pinado, não branch". Isso registra o
+  pin no lugar onde ele é consumido, sem a indireção de mais um arquivo pra
+  um componente que já é opcional e fora da entrega.
