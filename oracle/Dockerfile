@@ -5,12 +5,14 @@
 FROM maven:3.9-eclipse-temurin-8@sha256:b595d84453cef0567168b65c0566743114a6a47d2ad7e7a712a20cf4f4555fd4
 
 # Commit pinado (não branch) por reprodutibilidade citável — ver
-# docker_explain.md, "Commit pinado, não branch".
-ARG USCHEMA_COMMIT
-ARG USCHEMA_INFERENCE_COMMIT
+# docker_explain.md, "Commit pinado, não branch". Estes são os SHAs contra os
+# quais os patches, o baseline JUnit (65/76) e a equivalência do northwind.xmi
+# foram validados; avance-os só deliberadamente, revalidando o conjunto.
+ARG USCHEMA_COMMIT=6dfd6b4a6c04c67e49a80fb6cb6da9dd0f0f0f8c
+ARG USCHEMA_INFERENCE_COMMIT=0f8f58c31f7661ce9be7333a1f34b9a05321a993
 
 RUN test -n "$USCHEMA_COMMIT" && test -n "$USCHEMA_INFERENCE_COMMIT" || \
-    (echo "Build precisa de --build-arg USCHEMA_COMMIT=<sha> --build-arg USCHEMA_INFERENCE_COMMIT=<sha>" >&2 && exit 1)
+    (echo "USCHEMA_COMMIT/USCHEMA_INFERENCE_COMMIT não podem ser vazios" >&2 && exit 1)
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git patch \

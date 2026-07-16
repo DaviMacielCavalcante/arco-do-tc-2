@@ -69,17 +69,27 @@ em `docker_explain.md`, seção "Suíte JUnit original".
 ## Build
 
 ```bash
-git ls-remote https://github.com/modelum/uschema.git
-git ls-remote https://github.com/modelum/uschema-inference.git
-# branch default é "main" nos dois; usar os SHAs acima:
+docker build -t extrator-uschema oracle/
+```
+
+Os dois commits upstream vêm pinados como default de `ARG` no `Dockerfile` —
+são os SHAs contra os quais este oráculo foi validado (patches aplicando
+limpos, baseline JUnit 65/76, `northwind.xmi` equivalente ao gabarito):
+
+| Repositório | SHA pinado |
+|---|---|
+| `modelum/uschema` | `6dfd6b4a6c04c67e49a80fb6cb6da9dd0f0f0f8c` |
+| `modelum/uschema-inference` | `0f8f58c31f7661ce9be7333a1f34b9a05321a993` |
+
+Buildar sem `--build-arg` reproduz exatamente o oráculo citado no TCC. Para
+avançar o pin (deliberadamente, revalidando o conjunto), sobrescreva:
+
+```bash
 docker build \
   --build-arg USCHEMA_COMMIT=<sha> \
   --build-arg USCHEMA_INFERENCE_COMMIT=<sha> \
   -t extrator-uschema oracle/
 ```
-
-O build falha cedo se os dois `--build-arg` não forem passados — de
-propósito, ver `docker_explain.md`.
 
 ## Tarefas (Fase 0.5)
 
