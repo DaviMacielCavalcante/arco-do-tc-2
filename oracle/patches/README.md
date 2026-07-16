@@ -13,7 +13,7 @@ sem patch. Motivo de cada decisão, e como os patches foram verificados:
 | #2 | pom `doc2uschema` | Jackson → 2.10.5 (unificado pros dois caminhos desde a migração do Mongo pra Spark 3.0.1) | sem `.patch` — pom original nunca é lido nesta build |
 | #3 | runtime | JDK 8 (Spark 3.0.1 não lê bytecode > major 52) | sem `.patch` — já garantido pela imagem base e pelo `uschema-build/runner/pom.xml` |
 | **#4** | `MongoDB2USchema.java`, `Neo4j2USchema.java`, `Json2USchemaModel.java`, `USchemaToDocumentDb.java`, `EcoreModelIO.java`, `ModelIOTest.java` | `Path.of(...)` → `Paths.get(...)` (API do Java 11, incompatível com JDK 8) | `.patch` — `0004-path-of-to-paths-get-inference.patch` (4 arquivos, repo `uschema-inference`) + `0004-path-of-to-paths-get-uschema.patch` (`EcoreModelIO.java` + `ModelIOTest.java`, repo `uschema`) |
-| **#5** | `Neo4j2USchemaMain.java` | remove hardcode de máquina (`hadoop.home.dir`, supressão de log); adiciona `args[0]` como nome do banco | `.patch` — `0005-neo4jmain-cli-arg-no-hardcode.patch` |
+| **#5** | `Neo4j2USchemaMain.java` | remove hardcode de máquina (`hadoop.home.dir`, supressão de log); adiciona `args[0]` como nome do banco + validação (rejeita `/`, `\`, `..`) | `.patch` — `0005-neo4jmain-cli-arg-no-hardcode.patch` |
 | **#6** | `Helpers.java` | `_id` genérico: `doc.get("_id")` + checagem `instanceof ObjectId`, timestamp `0L` se não for | `.patch` — `0006-helpers-generic-id.patch` |
 | **#7** | `USchemaModelBuilder.java` | move `sc.getInners().get(0)` pra dentro do `else`, aproveitando o short-circuit do `\|\|` já existente | `.patch` — `0007-arraysc-empty-shortcircuit.patch` |
 | #8 | `SchemaInference.java` | `combineMetadata` ao colapsar variações (contagem) | sem patch, de propósito — corrigido só no porte Python |

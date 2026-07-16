@@ -2,7 +2,9 @@
 # porte Python. Opcional, não entra na entrega. Justificativas completas em
 # oracle/docker_explain.md.
 
-FROM maven:3.9-eclipse-temurin-8
+# Pinada por digest (não só a tag), mesmo princípio do commit pinado dos
+# fontes abaixo — ver docker_explain.md, "Commit pinado, não branch".
+FROM maven:3.9-eclipse-temurin-8@sha256:b595d84453cef0567168b65c0566743114a6a47d2ad7e7a712a20cf4f4555fd4
 
 # Commit pinado (não branch) por reprodutibilidade citável — ver
 # docker_explain.md, "Commit pinado, não branch".

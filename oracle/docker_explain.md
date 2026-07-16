@@ -46,6 +46,18 @@ poderia alterar silenciosamente o que o TCC cita como oráculo de referência.
 Reprodutibilidade citável exige apontar pra um SHA fixo, não para "o que
 estava em `main` no dia em que alguém rodou `docker build`".
 
+**Mesmo princípio aplicado à imagem base.** `FROM maven:3.9-eclipse-temurin-8`
+sozinho é uma *tag*, não um artefato imutável — o mantenedor pode
+republicá-la (patch de segurança, rebuild) e o `docker build` passaria a
+puxar bytes diferentes sem nenhuma mudança neste repo. Pinado por digest
+(`@sha256:b595d84...`, capturado via
+`GET https://hub.docker.com/v2/repositories/library/maven/tags/3.9-eclipse-temurin-8/`,
+campo `digest` de nível superior — é o digest do manifest list multi-arch,
+não de uma arquitetura específica, então continua resolvendo pra
+amd64/arm64/etc. corretamente no pull). Se a tag precisar avançar (nova
+versão do Maven/JDK), o digest é atualizado manualmente, do mesmo jeito
+deliberado que os `USCHEMA_COMMIT`/`USCHEMA_INFERENCE_COMMIT`.
+
 ## Maven puro (sem Eclipse), build único
 
 Os repositórios upstream foram desenvolvidos como projetos Eclipse (PDE),
@@ -177,7 +189,14 @@ compila ou o `main` nem roda fora da máquina do autor original:
   `F:\hadoop` (caminho da máquina do autor original) e supressão de
   log/stderr. Removidos; **adicionado** `args[0]` como nome do banco (não
   existia no original — sem isso não dá pra parametrizar via
-  `entrypoint.sh`).
+  `entrypoint.sh`). **Também adicionada** uma validação de `databaseName`
+  (rejeita `/`, `\` e `..`) logo depois de ler `args[0]` — defesa em
+  profundidade contra o mesmo problema que o `entrypoint.sh` já bloqueia no
+  caminho oficial (`--db`), mas que ficaria aberto pra quem chamar
+  `mvn exec:java -Dexec.args=...` direto, pulando o `entrypoint.sh` (como
+  fizemos várias vezes nesta sessão, pra debug). `databaseName` compõe
+  caminho de arquivo (`OUTPUTS_FOLDER + databaseName + ...`); sem a
+  validação, um valor como `../outside` escaparia da pasta de saída.
 
 ### #2, #3 — satisfeitos estruturalmente, sem `.patch`
 

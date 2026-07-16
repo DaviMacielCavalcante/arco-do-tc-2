@@ -37,14 +37,27 @@ USAGE
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --db)   DB_NAME="${2:-}"; shift 2 ;;
-    --kind) KIND="${2:-}"; shift 2 ;;
+    # $# -ge 2 antes do shift 2: sem isso, "--db" como último argumento (sem
+    # valor) faz o shift falhar sob set -e e o script morre sem mostrar o uso.
+    --db)   [ $# -ge 2 ] || usage; DB_NAME="$2"; shift 2 ;;
+    --kind) [ $# -ge 2 ] || usage; KIND="$2"; shift 2 ;;
     *) echo "Argumento desconhecido: $1" >&2; usage ;;
   esac
 done
 
 [ -n "$KIND" ] || usage
 [ -n "$DB_NAME" ] || usage
+
+# DB_NAME vira nome de arquivo (.xmi) e, no caminho Mongo, uma linha de
+# config.properties (MONGO_DATABASE=...) — barra e quebra de linha
+# quebrariam o caminho de saída ou injetariam uma propriedade extra.
+case "$DB_NAME" in
+  *[$'\n\r/\\']*)
+    echo "--db: nome de banco inválido (sem barra nem quebra de linha)" >&2
+    exit 1
+    ;;
+esac
+
 mkdir -p "$OUTPUT_DIR"
 
 # Build único desde a unificação mongo+neo4j (Spark 3.0.1/Scala 2.12 pros

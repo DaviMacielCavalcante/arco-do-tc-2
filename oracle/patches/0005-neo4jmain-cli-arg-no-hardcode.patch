@@ -1,6 +1,6 @@
 --- a/es.um.uschema.neo4j2uschema/src/es/um/uschema/neo4j2uschema/main/Neo4j2USchemaMain.java
 +++ b/es.um.uschema.neo4j2uschema/src/es/um/uschema/neo4j2uschema/main/Neo4j2USchemaMain.java
-@@ -39,18 +39,23 @@
+@@ -39,18 +39,31 @@
  	// Huge -> 109724ms
  	public static void main(String[] args) throws IOException 
  	{
@@ -18,6 +18,14 @@
 +		// System.setErr(new java.io.PrintStream(new java.io.OutputStream() {@Override public void write(int b) {}}) {});
 +
 +		String databaseName = args.length > 0 ? args[0] : DATABASE_NAME;
++
++		// Nome do banco vira caminho de arquivo (OUTPUTS_FOLDER + databaseName + ...);
++		// separador de diretorio ou ".." poderiam escapar de OUTPUTS_FOLDER.
++		if (databaseName.contains("/") || databaseName.contains("\\") || databaseName.contains(".."))
++		{
++			System.err.println("Nome de banco invalido: " + databaseName);
++			System.exit(1);
++		}
 +
  		long start = System.currentTimeMillis();
 -		
