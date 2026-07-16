@@ -37,8 +37,6 @@ USAGE
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    # $# -ge 2 antes do shift 2: sem isso, "--db" como último argumento (sem
-    # valor) faz o shift falhar sob set -e e o script morre sem mostrar o uso.
     --db)   [ $# -ge 2 ] || usage; DB_NAME="$2"; shift 2 ;;
     --kind) [ $# -ge 2 ] || usage; KIND="$2"; shift 2 ;;
     *) echo "Argumento desconhecido: $1" >&2; usage ;;
@@ -48,9 +46,6 @@ done
 [ -n "$KIND" ] || usage
 [ -n "$DB_NAME" ] || usage
 
-# DB_NAME vira nome de arquivo (.xmi) e, no caminho Mongo, uma linha de
-# config.properties (MONGO_DATABASE=...) — barra e quebra de linha
-# quebrariam o caminho de saída ou injetariam uma propriedade extra.
 case "$DB_NAME" in
   *[$'\n\r/\\']*)
     echo "--db: nome de banco inválido (sem barra nem quebra de linha)" >&2

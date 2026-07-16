@@ -30,6 +30,7 @@ não só verificadas em teoria ou por inspeção de código.
 | `mkdir -p outputs/` no caminho Mongo | `entrypoint.sh` | `EcoreModelIO.write()` não cria a pasta sozinho |
 | Suíte JUnit original (baseline, manual) | `uschema-build/runner/pom.xml` | 65/76 passam; os 11 que falham são defeitos pré-existentes do repo original, não do empacotamento |
 | Contrato `--db`/`--kind` (CLI args) | `entrypoint.sh` | volta ao desenho original do plano (`fase0_fundacao_oraculo.md`), viável depois da unificação — só `MONGO_URL`/`MONGO_COLLECTIONS` continuam em env var |
+| Correções de revisão automática (CodeRabbit) | `Dockerfile`/`entrypoint.sh`/`patch #5`/`runner/pom.xml` | pin por digest, validação de `DB_NAME`, `org.json` atualizado; detalhe na seção "Mudanças a partir de revisão automática" |
 
 ---
 
@@ -181,10 +182,13 @@ compila ou o `main` nem roda fora da máquina do autor original:
 - **#1** — `MongoDB2USchemaMain.configure()` está sem
   `bind(FeatureAnalyzer.class).to(DefaultFeatureAnalyzer.class)` no binding
   Guice.
-- **#4** — `Path.of(...)` (API do Java 11) usado em 5 arquivos
+- **#4** — `Path.of(...)` (API do Java 11) usado em 5 arquivos de produção
   (`MongoDB2USchema`, `Neo4j2USchema`, `Json2USchemaModel`,
   `USchemaToDocumentDb`, `EcoreModelIO`), incompatível com o JDK 8 exigido
-  pelo Spark 2.4/3.0.1. Trocado por `Paths.get(...)`.
+  pelo Spark 2.4/3.0.1. Trocado por `Paths.get(...)`. Um 6º arquivo,
+  `ModelIOTest.java` (teste, não produção), tinha o mesmo bug — descoberto
+  só depois, rodando a suíte JUnit (ver seção "Suíte JUnit original"
+  abaixo) — e entrou no mesmo `.patch`.
 - **#5** — `Neo4j2USchemaMain` tinha `hadoop.home.dir` hardcoded pra
   `F:\hadoop` (caminho da máquina do autor original) e supressão de
   log/stderr. Removidos; **adicionado** `args[0]` como nome do banco (não
@@ -416,3 +420,78 @@ A unificação mongo+neo4j num build único e o novo contrato `--db`/`--kind`
 (ver seções acima) também foram validados de ponta a ponta: os dois XMIs
 gerados pelo classpath unificado batem exatamente com os dos builds
 separados antigos, via `compare()`.
+
+## Mudanças a partir de revisão automática (CodeRabbit)
+
+Depois da unificação mongo+neo4j, a revisão automática do CodeRabbit sobre o
+diff apontou achados que motivaram as correções abaixo (2026-07-15). Os
+comentários curtos que ficariam no código (`Dockerfile`/`entrypoint.sh`/
+`.patch`) foram deliberadamente **removidos de lá** e centralizados aqui —
+mesma convenção já usada pro resto do arquivo ("Como ler", no topo): código
+com comentário mínimo, razão completa só neste documento.
+
+### Aplicadas
+
+- **Imagem base pinada por digest.** `FROM maven:3.9-eclipse-temurin-8`
+  sozinho é uma *tag*, não um artefato imutável — o mantenedor pode
+  republicá-la (patch de segurança, rebuild) e o `docker build` passaria a
+  puxar bytes diferentes sem nenhuma mudança neste repo. Pinado por digest
+  (`@sha256:b595d84...`, capturado via
+  `GET https://hub.docker.com/v2/repositories/library/maven/tags/3.9-eclipse-temurin-8/`,
+  campo `digest` de nível superior — é o digest do manifest list multi-arch,
+  não de uma arquitetura específica, então continua resolvendo pra
+  amd64/arm64/etc. corretamente no pull). Mesmo princípio do commit pinado
+  dos fontes (ver "Commit pinado, não branch" acima). Se a tag precisar
+  avançar (nova versão do Maven/JDK), o digest é atualizado manualmente.
+- **`entrypoint.sh`: guarda antes do `shift 2`.** `--db`/`--kind` sem valor
+  (ex.: `--db` como último argumento) fazia `shift 2` falhar sob `set -e`,
+  e o script morria sem mostrar o uso esperado. Corrigido checando
+  `[ $# -ge 2 ]` antes de cada `shift 2`.
+- **`entrypoint.sh`: validação de `DB_NAME`.** `DB_NAME` vira nome de
+  arquivo (`$OUTPUT_DIR/${DB_NAME}.xmi`) e, no caminho Mongo, uma linha de
+  `config.properties` (`MONGO_DATABASE=${DB_NAME}`). Sem validação, um
+  valor com barra ou `..` poderia escrever fora de `$OUTPUT_DIR`, e um
+  valor com quebra de linha poderia injetar uma propriedade extra no
+  `config.properties` (ex.: uma segunda linha `MONGO_URL=...`,
+  redirecionando a conexão configurada). Corrigido rejeitando `/`, `\` e
+  quebra de linha em `DB_NAME` antes de usá-lo.
+- **Patch #5: mesma validação no Java.** A validação do `entrypoint.sh`
+  cobre o caminho oficial (`--db`/`--kind`), mas não protege quem rodar
+  `mvn exec:java -Dexec.args=...` direto, pulando o `entrypoint.sh` — como
+  foi feito várias vezes nesta sessão, pra debug/experimento (ver
+  "Unificação mongo+neo4j..." acima). `databaseName` (`args[0]`) compõe
+  `OUTPUTS_FOLDER + databaseName + ...` em `Neo4j2USchemaMain.main()`; sem
+  validação, um valor como `../outside` escaparia da pasta de saída.
+  Estendido o patch `0005-neo4jmain-cli-arg-no-hardcode.patch` com a mesma
+  checagem (rejeita `/`, `\`, `..`), verificado do mesmo jeito que as
+  outras extensões de patch desta sessão (clone limpo do commit pinado,
+  `patch -p1`, `diff -r` contra o esperado, zero `.orig`/`.rej`).
+- **`org.json` 20180130 → 20231013** em `uschema-build/runner/pom.xml` —
+  versão antiga afetada por uma vulnerabilidade de negação de serviço
+  conhecida; a nova existe no Maven Central (confirmado via
+  `search.maven.org`) e mantém compatibilidade com JDK 8.
+- **Contagem do patch #4 corrigida.** A descrição original ("5 arquivos")
+  não contava `ModelIOTest.java`, adicionado depois — na sessão do
+  baseline JUnit — como um 6º arquivo (teste, não produção). Corrigido
+  aqui e em `patches/README.md` pra descrever consistentemente 5 arquivos
+  de produção + 1 de teste.
+
+### Deliberadamente não aplicadas
+
+- **Rodar o container como usuário não-root.** Achado genérico de
+  linter/SAST (`Source: Linters/SAST tools`), correto em abstrato — mitiga
+  processo comprometido escrevendo fora do que deveria dentro do
+  container. Mas o modelo de ameaça não bate bem com o uso real daqui: o
+  oráculo é `--rm`, rodado manualmente, sem porta exposta, sem entrada de
+  rede não confiável — quem roda o comando já tem controle total da
+  própria máquina. Implementar exigiria criar usuário, ajustar dono de
+  `/app` e do cache Maven (`~/.m2`, preenchido como root durante o
+  `docker build`) e garantir que esse usuário escreve no bind mount
+  `/output` — justamente o ponto mais frágil já visto quebrar nesta sessão
+  (bug do `MSYS_NO_PATHCONV` no Windows/Git Bash). Custo/risco de
+  implementação alto, ganho de segurança baixo pro caso de uso real.
+- **Manifesto separado para os SHAs aprovados** (`USCHEMA_COMMIT`/
+  `USCHEMA_INFERENCE_COMMIT`). O `Dockerfile` já falha cedo, de propósito,
+  se `--build-arg` não for passado — indireção por manifesto não elimina
+  essa exigência, só adiciona uma camada pra um componente que já é
+  opcional e fora da entrega.
