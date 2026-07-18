@@ -107,14 +107,13 @@ falharia por motivo errado.
 - [x] **`ArraySC.size()`** devolve `homogeneous_size` se homogêneo, senão `len(inners)` (`ArraySC.java:106-112`) — é o que faz o guarda do #7 funcionar (array vazio ⇒ `size()==0` **e** `inners` vazio).
 - [x] `ObjectMetadata` (count/firstTimestamp/lastTimestamp) + **`combine_metadata`** (`ObjectMetadata.java:50-60`): `count += orig.count`; `firstTimestamp = min` e `lastTimestamp = max`, **ambos com `0` como sentinela** (`if firstTimestamp == 0 or orig.firstTimestamp < firstTimestamp`). O construtor default deixa tudo em 0. ⚠️ A sentinela só vale de **um lado** — defeito novo, catalogado como **M1** em `bugs_originais.md`, replicado e travado por teste.
 - [x] ~~`firsto`: `MultiValued`, `NumberWithRangeSC`, `Ranged`, `StringMultiValuedSC`.~~ **Não portado — código morto confirmado.** `grep` das quatro classes em todo o repo Java não retorna **nenhuma** referência fora do próprio pacote `intermediate/firsto/`: não são importadas pelo `SchemaInference`, pelo `USchemaModelBuilder`, por nenhuma estratégia nem por nenhum JUnit. Mesma decisão que a 0.6 tomou para o `camelCase`/`underscore` do Inflector, com uma diferença a favor: lá havia teste cobrindo, aqui não há. **Não há `firsto.py`** — reintroduzir só se algum consumidor aparecer.
-- [ ] `SchemaPrinter` (`intermediate/raw/util`) — só é chamado sob `DEBUG_TYPE.DEBUG`, que é constante `NO_DEBUG` (`SchemaInference:61,142`). **Confirmado que o `J2SchemaSimpleTests` depende dele** (`schemaString`, três asserções sobre a string) → **tem de ser portado**. ⚠️ E traz uma dependência escondida: o teste monta a árvore com `RawSchemaGen.deSchema` (`main/util/RawSchemaGen.java`), um construtor de raw **separado** do `SchemaInference.infer` — sem `entityName`, sem `meta`, sem *type marker*. Os dois entram junto com o teste, na 1.6.
-  - [ ] ⚠️ Ao portar, decidir o que fazer com o `<null>` da saída esperada: o Java imprime `entityName` nulo como `null`, o Python imprimiria `None`. Ou o `schema_string` traduz, ou o teste portado afirma `<None>` — **registrar a escolha**.
+- [x] ~~`SchemaPrinter` (`intermediate/raw/util`)~~ → **movido para a 1.6.** A dúvida do todolist ("confirmar se o `J2SchemaSimpleTests` depende dele") está resolvida: **depende** (`schemaString`, três asserções sobre a string). Mas ele só faz sentido junto do teste que o exercita, e arrasta uma dependência a mais — ver o item correspondente na 1.6.
 - [x] Testes de `__eq__`/`__hash__`: contrato hash/eq, ordem de campos, `ArraySC` de tamanhos diferentes **iguais**, homogêneo × heterogêneo.
 
-**Saída:** ✅ `intermediate/raw.py` + `metadata.py` (**sem** `firsto.py` — ver acima),
-com igualdade estrutural coberta por `tests/unit/test_raw.py` e
-`tests/unit/test_metadata.py` (50 casos). Pendente: `SchemaPrinter` +
-`RawSchemaGen`, que migraram para a 1.6 por dependerem do `J2SchemaSimpleTests`.
+**Saída:** ✅ `intermediate/raw.py` + `metadata.py` (**sem** `firsto.py`), com
+igualdade estrutural coberta por `tests/unit/test_raw.py` e
+`tests/unit/test_metadata.py` (50 casos). `SchemaPrinter` e `RawSchemaGen`
+saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 ---
 
@@ -199,6 +198,10 @@ com igualdade estrutural coberta por `tests/unit/test_raw.py` e
 - [ ] **Gerar as fixtures do bloco B pelo oráculo** (`CountTimestamp.json`, `ObjectIds.json`, `Types.json`, `SimplifyAggr.json` → tripla). A 0.5 está pronta e testada → **desbloqueado**. Gerar pelo oráculo é mais fiel que reconstruir à mão.
   - [ ] ⚠️ **Escolher o caminho de extração por fixture, não um só para todas** (achado da 1.0). Os dois caminhos produzem triplas **diferentes** para o mesmo dado: o Spark emite `ObjectId` como `{"$oid": …}` (vira agregado) e não colapsa array homogêneo; o map-reduce emite `"oid"` (vira `ObjectIdSC`) e colapsa. O `ObjectIdTest` **exige** o map-reduce `v1` (`ObjectIdTest.java:56`) — com fixture do Spark ele falha por motivo errado. O `SimplifyAggrTest`, que afirma sobre o colapso `Aggr{V1,V2,V2…}` → `Aggr{V1,V2}`, idem. Registrar em cada fixture qual caminho a gerou.
 - [ ] `J2SchemaSimpleTests` → 1.1 · `OptionalTest` → 1.3b · `RemovePMapTest` → 1.1/1.4 · `RelationshipTypeToEntityTypeTest` → 1.4.
+  - [ ] ⚠️ **O `J2SchemaSimpleTests` arrasta dois módulos que a 1.1 não portou** (verificado no fonte, decisão movida da 1.1 para cá):
+    - [ ] **`SchemaPrinter`** (`intermediate/raw/util/SchemaPrinter.java`) — no pipeline é código morto (só roda sob `DEBUG_TYPE.DEBUG`, constante em `NO_DEBUG`, `SchemaInference:61,142`), mas o teste afirma sobre a saída de `schemaString` em três casos. Portar **junto com o teste**, não antes: é o único consumidor.
+    - [ ] **`RawSchemaGen`** (`main/util/RawSchemaGen.java`) — o teste **não** usa `SchemaInference.infer`; monta a árvore por este construtor separado, que não atribui `entityName`, `meta` nem lê *type marker*, e cujo ramo de array não deduplica. Portar como módulo próprio, sem tentar reaproveitar o `infer`.
+    - [ ] ⚠️ Decidir o `<null>` da saída esperada (`"<null>{\"a\": Number } "`): vem de `entityName` nulo impresso pelo Java como `null`; o Python imprimiria `None`. Ou o `schema_string` traduz o nulo, ou o teste portado afirma `<None>` — **registrar a escolha**, é divergência de string literal num teste de regressão.
 - [ ] `CountTimestampTest`, `ObjectIdTest`, `TypesTest`, `SimplifyAggrTest` → 1.2/1.3 (bloco B).
 - [ ] **Testes que codificam bug** (`INVENTARIO.md`): `ObjectIdTest` → **acrescentar** caso com `_id` não-`ObjectId` afirmando que infere sem estourar (#6); `CountTimestampTest` → **acrescentar** caso com array de tamanho variável afirmando contagem correta (#8); **teste novo** de array vazio (#7).
 - [ ] ⚠️ **`OptionalTest` está vermelho no baseline do oráculo** (é 1 dos 11 de `oracle/docker_explain.md`) — o `OptionalTestConfig` do teste não liga `FeatureAnalyzer` (é o bug do patch `#1`, nunca corrigido no original). **Sem Guice, o bug some por construção** → no porte ele deve **passar**. Não tomar o vermelho do oráculo como valor esperado.
