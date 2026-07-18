@@ -22,6 +22,8 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
 - **`I1`–`I3`** — achados **novos**, no `Inflector` (`.../util/inflector/`),
   levantados ao portar a normalização de nomes (Fase 0.6). O `Inflector` é código
   vendorizado do **ModeShape**, então os defeitos são *upstream do upstream*.
+- **`M1`** — achado **novo**, em `ObjectMetadata` (`.../metadata/`), levantado ao
+  portar o modelo intermediário (Fase 1.1).
 
 Todas as citações de linha referem-se ao `HEAD` do upstream, salvo indicação em
 contrário.
@@ -50,6 +52,7 @@ contrário.
 | I1 | `Inflector.java:470-473` | guarda ordinal testa o número, não o resto | corretude | replicado (fiel) |
 | I2 | `Inflector.java:454-459` | `titleCase` sem guarda de nulo (NPE) | crash latente | não replicado (devolve `None`) |
 | I3 | `Inflector.java:445` | javadoc do `titleCase` promete o que o código não faz | documentação | replicado (fiel ao **código**) |
+| **M1** | `ObjectMetadata.java:55` | sentinela `0` só reconhecida de um lado | **corretude** | replicado (fiel) |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
@@ -679,6 +682,65 @@ docstring do porte não repete o exemplo falso.
 doc: isso mudaria o comportamento de um método público por causa de um comentário
 errado. Se alguém quiser a semântica do Rails, é `titleCase(underscore(word))`, no
 chamador.
+
+---
+
+## M1 — a sentinela `0` de `combineMetadata` só vale de um lado
+
+**Sítio:** `es.um.uschema.doc2uschema/.../metadata/ObjectMetadata.java:50-60`.
+
+```java
+public void combineMetadata(ObjectMetadata orig)
+{
+    count += orig.count;
+
+    if (firstTimestamp == 0 || orig.firstTimestamp < firstTimestamp)  // :55
+        firstTimestamp = orig.firstTimestamp;
+
+    if (lastTimestamp == 0 || orig.lastTimestamp > lastTimestamp)     // :58
+        lastTimestamp = orig.lastTimestamp;
+}
+```
+
+O `0` é sentinela de *"ainda não sei"* — o construtor sem argumentos (`:10-12`)
+deixa os três campos zerados, e é ele que o `infer` usa para todo objeto não-raiz
+(`SchemaInference.java:198`). O teste `x == 0` reconhece essa sentinela **no
+receptor**, mas nada a reconhece **no argumento**.
+
+**Sintoma.** Com `firstTimestamp` já preenchido e um `orig` zerado, o segundo
+termo decide: `0 < 1781470615` é verdadeiro, e o timestamp real é **substituído
+por zero**. Um documento sem timestamp apaga a janela de quem tem.
+
+```text
+ObjectMetadata(5, 100, 200).combineMetadata(ObjectMetadata(1, 0, 0))
+  → count=6, firstTimestamp=0, lastTimestamp=200
+```
+
+**Assimetria.** O `lastTimestamp` é imune por acidente aritmético, não por
+desenho: `0 > x` é falso para qualquer `x` positivo, então o ramo nunca dispara.
+As duas metades do método parecem simétricas e não são.
+
+**Alcance.** Não é teórico — é o caminho normal do **#6**. Ali, `_id` que não é
+`ObjectId` produz `timestamp = 0` (`Helpers.java:66`, já com o patch), e toda
+coleção de origem relacional cai nesse caso. No Northwind, onde *nenhum*
+documento tem `ObjectId`, os dois lados são zero e o defeito não se manifesta;
+ele aparece em coleção **mista**, com parte dos documentos importada e parte
+inserida pelo Mongo. Também é alcançado pelo `innerCountAndTimestampsAdjust`
+(`SchemaInference.java:92-113`), que combina o meta de entidades internas — que
+nascem zeradas — com o das ocorrências-raiz.
+
+**Decisão no porte: replicar.** `combine_metadata` transcreve as duas condições
+como estão. Corrigir mudaria `firstTimestamp` em toda variação de coleção mista,
+e o harness da 0.3 acusaria divergência contra o oráculo em cada uma —
+divergência causada por nós, no meio de uma fase cujo critério de aceite é
+justamente a equivalência. O comportamento está travado por teste
+(`tests/unit/test_metadata.py::test_zero_a_direita_sobrescreve_o_first_timestamp`),
+com a asserção escrita ao contrário do desejável e comentada como tal.
+
+**Correção upstream.** Guardar também o lado do argumento, tratando `0` como
+ausência nos dois: só adotar `orig.firstTimestamp` se ele for diferente de zero.
+É correção de uma linha e não altera nenhum caso em que ambos os lados são
+válidos — mas só depois de a equivalência estar demonstrada.
 
 ---
 
