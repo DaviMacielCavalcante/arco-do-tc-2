@@ -93,24 +93,28 @@ falharia por motivo errado.
 
 ---
 
-## 1.1 — Modelos intermediários (`intermediate/raw` + `firsto` + metadata)
+## 1.1 — Modelos intermediários (`intermediate/raw` + metadata) ✅
 
 > Igualdade estrutural é **load-bearing**: se divergir do Java, variações que
 > deveriam colapsar não colapsam (ou vice-versa) e o XMI não bate. Cobrir com teste
 > de `__eq__`/`__hash__` **desde já**.
 
-- [ ] `SchemaComponent` (base) + `ObjectSC`, `ArraySC`, `StringSC`, `NumberSC`, `BooleanSC`, `NullSC`, `ObjectIdSC` como `dataclasses`.
-- [ ] **`SchemaComponent.__eq__` compara o nome da classe** (`SchemaComponent.java:8`: `getClass().getName().equals(...)`). As folhas (`StringSC`/`NumberSC`/…) **não sobrescrevem** — dois `StringSC` quaisquer são iguais. O Java estoura `NullPointerException` se `other` for `null`; decidir e **registrar** se replicamos (recomendo não replicar — é linha faltando, não semântica, como o `I2` do Inflector).
-- [ ] **`ObjectSC.__eq__` = `entityName` + `isRoot` + `inners`** (`ObjectSC.java:33-34`), onde `inners` é **lista ordenada** de pares `(nome, SchemaComponent)` → **a ordem dos campos importa**. `__hash__` = `entityName ^ isRoot ^ inners` (`ObjectSC.java:24`) — estoura se `entityName` for `None`.
-- [ ] **`ArraySC.__eq__` ignora o tamanho** (`ArraySC.java:82-101`, com a checagem de `homogeneous_size` **comentada** na `:97` no original). Compara `homogeneous` + `inners`. `__hash__` = `inners` apenas. **É deliberado e é a origem do #8** — replicar junto com a correção em 1.2.
-- [ ] **`ArraySC.add`** (`ArraySC.java:38-67`), e é mais sutil que parece: enquanto homogêneo, `inners` guarda **um só** elemento e `homogeneous_size` conta; ao aparecer um diferente, vira heterogêneo e `inners` é **reconstruído** com `nCopies(homogeneous_size, firstSc) + sc`. `upperBounds` incrementa sempre; `lowerBounds` fica 0.
-- [ ] **`ArraySC.size()`** devolve `homogeneous_size` se homogêneo, senão `len(inners)` (`ArraySC.java:106-112`) — é o que faz o guarda do #7 funcionar (array vazio ⇒ `size()==0` **e** `inners` vazio).
-- [ ] `ObjectMetadata` (count/firstTimestamp/lastTimestamp) + **`combine_metadata`** (`ObjectMetadata.java:50-60`): `count += orig.count`; `firstTimestamp = min` e `lastTimestamp = max`, **ambos com `0` como sentinela** (`if firstTimestamp == 0 or orig.firstTimestamp < firstTimestamp`). O construtor default deixa tudo em 0.
-- [ ] `firsto`: `MultiValued`, `NumberWithRangeSC`, `Ranged`, `StringMultiValuedSC`. **Verificar antes se são usados no pipeline** — se forem código morto (como metade do Inflector na 0.6), portar só se algum teste cobrir, e **registrar a decisão**.
-- [ ] `SchemaPrinter` (`intermediate/raw/util`) — só é chamado sob `DEBUG_TYPE.DEBUG`, que é constante `NO_DEBUG` (`SchemaInference:61,142`). **Mas** o `J2SchemaSimpleTests` afirma sobre a **string** do schema (INVENTARIO, bloco A) → confirmar se depende dele antes de descartar.
-- [ ] Testes de `__eq__`/`__hash__`: contrato hash/eq, ordem de campos, `ArraySC` de tamanhos diferentes **iguais**, homogêneo × heterogêneo.
+- [x] `SchemaComponent` (base) + `ObjectSC`, `ArraySC`, `StringSC`, `NumberSC`, `BooleanSC`, `NullSC`, `ObjectIdSC` como `dataclasses`.
+- [x] **`SchemaComponent.__eq__` compara o nome da classe** (`SchemaComponent.java:8`: `getClass().getName().equals(...)`). As folhas (`StringSC`/`NumberSC`/…) **não sobrescrevem** — dois `StringSC` quaisquer são iguais. O Java estoura `NullPointerException` se `other` for `null`; decidir e **registrar** se replicamos (recomendo não replicar — é linha faltando, não semântica, como o `I2` do Inflector).
+- [x] **`ObjectSC.__eq__` = `entityName` + `isRoot` + `inners`** (`ObjectSC.java:33-34`), onde `inners` é **lista ordenada** de pares `(nome, SchemaComponent)` → **a ordem dos campos importa**. `__hash__` = `entityName ^ isRoot ^ inners` (`ObjectSC.java:24`) — estoura se `entityName` for `None`.
+- [x] **`ArraySC.__eq__` ignora o tamanho** (`ArraySC.java:82-101`, com a checagem de `homogeneous_size` **comentada** na `:97` no original). Compara `homogeneous` + `inners`. `__hash__` = `inners` apenas. **É deliberado e é a origem do #8** — replicar junto com a correção em 1.2.
+- [x] **`ArraySC.add`** (`ArraySC.java:38-67`), e é mais sutil que parece: enquanto homogêneo, `inners` guarda **um só** elemento e `homogeneous_size` conta; ao aparecer um diferente, vira heterogêneo e `inners` é **reconstruído** com `nCopies(homogeneous_size, firstSc) + sc`. `upperBounds` incrementa sempre; `lowerBounds` fica 0.
+- [x] **`ArraySC.size()`** devolve `homogeneous_size` se homogêneo, senão `len(inners)` (`ArraySC.java:106-112`) — é o que faz o guarda do #7 funcionar (array vazio ⇒ `size()==0` **e** `inners` vazio).
+- [x] `ObjectMetadata` (count/firstTimestamp/lastTimestamp) + **`combine_metadata`** (`ObjectMetadata.java:50-60`): `count += orig.count`; `firstTimestamp = min` e `lastTimestamp = max`, **ambos com `0` como sentinela** (`if firstTimestamp == 0 or orig.firstTimestamp < firstTimestamp`). O construtor default deixa tudo em 0. ⚠️ A sentinela só vale de **um lado** — defeito novo, catalogado como **M1** em `bugs_originais.md`, replicado e travado por teste.
+- [x] ~~`firsto`: `MultiValued`, `NumberWithRangeSC`, `Ranged`, `StringMultiValuedSC`.~~ **Não portado — código morto confirmado.** `grep` das quatro classes em todo o repo Java não retorna **nenhuma** referência fora do próprio pacote `intermediate/firsto/`: não são importadas pelo `SchemaInference`, pelo `USchemaModelBuilder`, por nenhuma estratégia nem por nenhum JUnit. Mesma decisão que a 0.6 tomou para o `camelCase`/`underscore` do Inflector, com uma diferença a favor: lá havia teste cobrindo, aqui não há. **Não há `firsto.py`** — reintroduzir só se algum consumidor aparecer.
+- [ ] `SchemaPrinter` (`intermediate/raw/util`) — só é chamado sob `DEBUG_TYPE.DEBUG`, que é constante `NO_DEBUG` (`SchemaInference:61,142`). **Confirmado que o `J2SchemaSimpleTests` depende dele** (`schemaString`, três asserções sobre a string) → **tem de ser portado**. ⚠️ E traz uma dependência escondida: o teste monta a árvore com `RawSchemaGen.deSchema` (`main/util/RawSchemaGen.java`), um construtor de raw **separado** do `SchemaInference.infer` — sem `entityName`, sem `meta`, sem *type marker*. Os dois entram junto com o teste, na 1.6.
+  - [ ] ⚠️ Ao portar, decidir o que fazer com o `<null>` da saída esperada: o Java imprime `entityName` nulo como `null`, o Python imprimiria `None`. Ou o `schema_string` traduz, ou o teste portado afirma `<None>` — **registrar a escolha**.
+- [x] Testes de `__eq__`/`__hash__`: contrato hash/eq, ordem de campos, `ArraySC` de tamanhos diferentes **iguais**, homogêneo × heterogêneo.
 
-**Saída:** `intermediate/raw.py` + `firsto.py` + `metadata.py`, com igualdade estrutural coberta por teste.
+**Saída:** ✅ `intermediate/raw.py` + `metadata.py` (**sem** `firsto.py` — ver acima),
+com igualdade estrutural coberta por `tests/unit/test_raw.py` e
+`tests/unit/test_metadata.py` (50 casos). Pendente: `SchemaPrinter` +
+`RawSchemaGen`, que migraram para a 1.6 por dependerem do `J2SchemaSimpleTests`.
 
 ---
 
@@ -223,7 +227,7 @@ falharia por motivo errado.
 - [ ] Determinismo coberto por teste: ordem de campos, `__eq__`/`__hash__`, ordem das variações.
 - [ ] `ruff` + `mypy --strict` limpos. ⚠️ Lembrar do aviso do `CLAUDE.md`: **o `mypy` não protege nada que atravesse a fronteira do PyEcore** — em 1.4 todo acesso a campo `EObject` precisa ser exercitado por teste ao menos uma vez, inclusive nos caminhos de erro.
 
-**Entregáveis:** `extractors/triple.py` · `intermediate/raw.py` + `firsto.py` + `metadata.py` · `inference/strategies.py` + `schema_inference.py` + `builder.py` · suíte de regressão portada (`J2SchemaSimple`/`Optional`/`RemovePMap`/`RelationshipTypeToEntityType`/`CountTimestamp`/`ObjectId`/`Types`/`SimplifyAggr` + testes novos de #7/#8 + `__eq__` + por estratégia).
+**Entregáveis:** `extractors/triple.py` · `intermediate/raw.py` + `metadata.py` · `inference/strategies.py` + `schema_inference.py` + `builder.py` · suíte de regressão portada (`J2SchemaSimple`/`Optional`/`RemovePMap`/`RelationshipTypeToEntityType`/`CountTimestamp`/`ObjectId`/`Types`/`SimplifyAggr` + testes novos de #7/#8 + `__eq__` + por estratégia).
 
 ## Riscos da fase
 

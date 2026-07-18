@@ -28,7 +28,7 @@ Layout `src/` (pacote `uschema`). Cada subpacote mapeia uma fase do roadmap:
 - `src/uschema/metamodel/` — **Fase 0.1/0.2**: PyEcore sobre `resources/uschema.ecore`; round-trip de XMI.
 - `src/uschema/naming/` — **Fase 0.6**: Inflector fiel ao Java (capitalização/pluralização dos nomes de entidade).
 - `src/uschema/validation/` — **Fase 0.3**: harness de equivalência estrutural, espelhando `USchemaCompareMain`.
-- `src/uschema/intermediate/` — **Fase 1.1**: modelos `raw` (Composite) e `firsto` como `dataclasses`.
+- `src/uschema/intermediate/` — **Fase 1.1**: modelo `raw` (Composite) + `metadata`, como `dataclasses`. O pacote `firsto` do Java **não** foi portado: é código morto (nenhuma referência fora do próprio pacote).
 - `src/uschema/inference/` — **Fase 1.2–1.4**: núcleo `doc2uschema` (`SchemaInference`, `strategies`, `USchemaModelBuilder`).
 - `src/uschema/extractors/` — **Fase 2**: extratores PySpark (`mongo`, `neo4j`) + `triple` (o contrato de costura, **Fase 1.0**).
 
