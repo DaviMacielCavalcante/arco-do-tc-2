@@ -59,6 +59,16 @@ class SchemaComponent:
     (``:8``, ``other.getClass()`` sem guarda). Não replicamos — é guarda
     faltando, não semântica, como o bug ``I2`` do Inflector (ver
     ``naming/inflector.py``). Registrar aqui se a decisão mudar.
+
+    ⚠️ **A checagem de tipo é assimétrica no original, e replicamos a
+    assimetria.** Esta base compara a **classe exata**
+    (``SchemaComponent.java:8``, ``getClass().getName()``), mas ``ObjectSC`` e
+    ``ArraySC`` sobrescrevem usando **``instanceof``** (``ObjectSC.java:31``,
+    ``ArraySC.java:86``) — ou seja, subtipo, não classe exata. Daí ``type(self)
+    is type(other)`` aqui e ``isinstance`` lá. Uniformizar os três para
+    ``type(...) is type(...)`` **parece** mais correto e é uma divergência: sem
+    subclasses de ``ObjectSC``/``ArraySC`` o resultado hoje coincide, mas o
+    critério do porte é fidelidade, não equivalência acidental.
     """
 
     def __eq__(self, other: object) -> bool:

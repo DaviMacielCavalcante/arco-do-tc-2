@@ -37,10 +37,11 @@ Fora do pacote: `resources/` (`.ecore` + XMIs de referência), `oracle/`
 `tests/` (`unit/`, `regression/`, `datasets/`).
 
 **Estado real do pacote** (mantenha esta lista honesta ao avançar): existem
-`metamodel/`, `naming/`, `validation/` e `extractors/triple.py`. Os demais
-subpacotes têm só `__init__.py` — **não** há stubs com `NotImplementedError`, e
-`cli.py` + `[project.scripts]` ainda não existem (entram na 1.7). Implemente
-bottom-up, test-alongside (ver `fase1_nucleo_inferencia.md`).
+`metamodel/`, `naming/`, `validation/`, `extractors/triple.py` e
+`intermediate/` (`raw.py` + `metadata.py`). Só `inference/` continua com apenas
+o `__init__.py` — **não** há stubs com `NotImplementedError`, e `cli.py` +
+`[project.scripts]` ainda não existem (entram na 1.7). Implemente bottom-up,
+test-alongside (ver `fase1_nucleo_inferencia.md`).
 
 ## Tooling
 

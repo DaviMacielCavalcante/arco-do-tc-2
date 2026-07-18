@@ -55,16 +55,26 @@ def test_comparar_com_objeto_alheio_da_false_sem_estourar() -> None:
     # qualquer objeto e simplesmente não casa.
     assert StringSC() != "oid"
     assert StringSC() != 42
-    assert StringSC() is not None
+
+
+def test_comparar_com_none_da_false_em_vez_de_estourar() -> None:
+    """Divergência deliberada: o Java estoura NPE (``SchemaComponent.java:8``).
+
+    ``other.getClass()`` sem guarda de nulo. Não replicamos — é guarda faltando,
+    não semântica, como o ``I2`` do Inflector. Chamamos ``__eq__`` direto porque
+    ``!= None`` é erro de lint (E711) e ``is not None`` testaria identidade, não
+    o ``__eq__``.
+    """
+    assert StringSC().__eq__(None) is False
 
 
 # --- ObjectSC (ObjectSC.java:23-37) ----------------------------------------
 
 
-def _obj(name: str | None = "Order", **kwargs: object) -> ObjectSC:
+def _obj(name: str | None = "Order", **kwargs: SchemaComponent) -> ObjectSC:
     obj = ObjectSC(entity_name=name)
     for key, value in kwargs.items():
-        obj.add((key, value))  # type: ignore[arg-type]
+        obj.add((key, value))
     return obj
 
 
