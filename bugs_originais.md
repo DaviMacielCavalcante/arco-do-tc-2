@@ -28,6 +28,12 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
   levantado e **confirmado por teste** ao portar a inferência (Fase 1.2).
 - **`M3`**/**`M4`** — achados **novos**, em `DefaultStructuralVariationSorter`
   (`.../process/util/`), levantados ao portar as estratégias EMF (Fase 1.3b).
+- **`M5`** — achado **novo**, em `DefaultEVariationMerger` (`.../process/util/`),
+  levantado ao portar o merger (Fase 1.3a) e **confirmado por execução real do
+  Java** (não só leitura — ver a entrada).
+- **`M6`** — achado **novo**, em `DefaultReferenceMatcher` (`.../process/util/`),
+  levantado ao portar as estratégias EMF (Fase 1.3b) e **confirmado por
+  execução real do Java**.
 
 Todas as citações de linha referem-se ao `HEAD` do upstream, salvo indicação em
 contrário.
@@ -60,6 +66,8 @@ contrário.
 | **M2** | `SchemaInference.java:100-104` | `innerCountAndTimestampsAdjust` estoura quando o Joiner funde uma entidade interna | **crash confirmado** | replicado (fiel) |
 | **M3** | `DefaultStructuralVariationSorter.java:40` | `sortByCount` não ordena (`ECollections.sort` comentado) | **corretude** | replicado (fiel) |
 | **M4** | `DefaultStructuralVariationSorter.java:28,34,46` | comparadores devolvem só `-1`/`1`, nunca `0` — não são ordem total | **corretude** | replicado (fiel) |
+| **M5** | `DefaultEVariationMerger.java:132` | `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios | **crash confirmado (Java e porte)** | replicado (fiel) |
+| **M6** | `DefaultReferenceMatcher.java:34-50` | chave concatenada crua no regex, sem escape — metacaractere vira regex | **corretude/segurança confirmada (Java e porte)** | replicado (fiel) |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
@@ -882,6 +890,99 @@ antes/depois antes de propor.
 
 ---
 
+## M5 — `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios
+
+**Sítio:** `es.um.uschema.doc2uschema/.../process/util/DefaultEVariationMerger.java:120-143`.
+
+```java
+private boolean homogeneousArraysMerge(String id, ArraySC toConsider, ArraySC sc)
+{
+    // Homogeneous arrays have either zero or one element
+    // Not both of them can have zero elements, as they would have merged in the previous
+    // phase, so find if any of them has zero size.
+    if (toConsider.size() == 0 || sc.size() == 0
+        || toConsider.getInners().get(0).equals(sc.getInners().get(0)))
+    {
+        int lowerBounds = Math.min(toConsider.getLowerBounds(), sc.getLowerBounds());
+
+        // If this is the empty array, then it won't be empty
+        if (sc.size() == 0)
+            sc.add(toConsider.getInners().get(0));   // :132
+        ...
+```
+
+**Sintoma.** O comentário do autor (`:122-124`) assume que os dois lados nunca
+chegam vazios ao mesmo tempo — "não podem ambos ter zero elementos, pois já
+teriam colapsado numa fase anterior". A suposição é falsa: `walkAndMerge`
+(nível objeto, `:72-91`) compara campo a campo, em ordem, e para no primeiro
+que não casar. Basta **outro** campo do mesmo par de variações reconciliar com
+sucesso (por exemplo, um array cheio×vazio — o próprio caso que este método
+trata) para o walk alcançar um **segundo** campo array, vazio nos dois lados:
+`toConsider.size() == 0` já satisfaz o `||` da condição, o corpo do `if`
+executa, e `sc.add(toConsider.getInners().get(0))` (`:132`) estoura
+`IndexOutOfBoundsException` — `toConsider.getInners()` também está vazio.
+
+**Confirmado por execução real do Java** (JDK 11, fontes do commit pinado via
+`git show`): mesmo `IndexOutOfBoundsException`, mesma linha (`:132`); o porte
+reproduz com `IndexError` no ponto equivalente.
+
+**Decisão no porte: replicar.** Não adicionar guarda de tamanho antes de
+`to_consider.inners[0]` — isso "consertaria" um crash que o próprio oráculo
+tem, no mesmo cenário, contradizendo a premissa do autor. Travado por teste
+(`tests/unit/test_strategies.py::test_merge_ambos_vazios_estoura_index_error`).
+
+**Correção upstream (candidata, não aplicada).** Checar `toConsider.size() ==
+0` explicitamente antes de indexar (ou reordenar a condição do `if` para não
+avaliar `.get(0)` quando os dois lados estão vazios) — mesma família de
+correção do #7, noutra classe.
+
+---
+
+## M6 — chave concatenada crua no regex do `ReferenceMatcher`, sem escape
+
+**Sítio:** `es.um.uschema.doc2uschema/.../process/util/DefaultReferenceMatcher.java:34-50`.
+
+```java
+idRegexps = stream.flatMap(entry ->
+    Affixes.stream().flatMap(affix ->
+        Stream.concat(
+            // prefix
+            StopChars.stream().map(c ->
+                MakePair.of(("^" + entry.getKey() + c + affix + ".*$").toLowerCase(), entry.getValue())),
+            ...
+```
+
+**Sintoma.** `entry.getKey()` — o nome da entidade (e suas variantes plural/
+singular, ver `create_reference_matcher`) — entra **cru** na string que vira
+`Pattern`/`Optional<T>` via `.matches(...)`. Não há `Pattern.quote` nem
+qualquer escape. Um metacaractere de regex no nome (`.`, `+`, `(`, `[`, `|`,
+…) é interpretado como regex, não como texto literal: `"a.b"` como nome de
+entidade faz o `.` casar **qualquer caractere**, não só um ponto.
+
+**Confirmado por execução real do Java** (JDK 11, fontes do commit pinado via
+`git show`): `"a.b"` casa `"aXb_id"` nos dois — o `.` não escapado vira
+wildcard igual no oráculo e no porte.
+
+**Origem prática.** O nome da entidade vem do marcador de tipo (`_type`) do
+documento, via `Inflector.capitalize` (`SchemaInference.java:183,188`) — não
+é uma string arbitrária de um atacante externo ao pipeline, mas também não é
+validada contra caracteres especiais em nenhum ponto do original.
+
+**Decisão no porte: replicar.** Não escapar `key` com `re.escape` antes de
+compor os padrões — isso tornaria o porte mais restrito que o oráculo em
+nomes de entidade com metacaracteres de regex, uma divergência de
+comportamento, não uma correção neutra. Travado por teste
+(`tests/unit/test_strategies_emf.py::test_reference_matcher_m6_chave_com_metacaractere_regex_vira_wildcard`).
+
+**Correção upstream (candidata, não aplicada).** Escapar a chave com
+`Pattern.quote(entry.getKey())` (ou, no porte, `re.escape(key)`) antes de
+compor cada padrão. Não deveria mudar nenhum casamento em nomes de entidade
+alfanuméricos comuns — só nomes com metacaracteres deixariam de casar de
+forma incidental. Ainda assim, requer dado antes/depois pra confirmar que
+nenhum dataset de referência depende do casamento incidental.
+
+---
+
 ## O que **não** é defeito
 
 Registrado para evitar que uma leitura futura os "corrija":
@@ -919,39 +1020,47 @@ Ordem sugerida, do mais defensável ao mais invasivo:
    upstream não sustenta as garantias que promete.
 2. **#7** — correção trivial, o próprio autor diagnosticou no comentário, sem
    mudança de veredito em dado válido. Candidato óbvio a PR.
-3. **I3** — corrigir o **exemplo do javadoc** do `titleCase` (o do hífen). Zero
+3. **M5** — mesma família do #7 (índice antes do teste de tamanho), noutra
+   classe (`DefaultEVariationMerger`). Confirmado por execução real do Java,
+   sem mudança de veredito em dado válido — só evita o crash.
+4. **M6** — escapar a chave (`re.escape`/`Pattern.quote`) antes de compor os
+   padrões do `ReferenceMatcher`. Não muda casamento em nomes alfanuméricos
+   comuns; fecha um casamento incidental via metacaractere de regex. Requer
+   dado antes/depois pra confirmar que nenhum dataset de referência depende
+   do casamento incidental.
+5. **I3** — corrigir o **exemplo do javadoc** do `titleCase` (o do hífen). Zero
    risco: não toca em código. Vem antes de I2 e I1 porque é a única do catálogo
    que, se ignorada, induz alguém a introduzir um defeito ao "consertar" o código
    para casar com a doc.
-4. **I2** — guarda de nulo no `titleCase`. Uma linha, alinha o método ao contrato
+6. **I2** — guarda de nulo no `titleCase`. Uma linha, alinha o método ao contrato
    dos outros nove da classe, e não muda nenhuma entrada válida. A mais barata das
    que tocam em código.
-5. **I1** — guarda ordinal sobre o resto, não sobre o número. Corrige valores
+7. **I1** — guarda ordinal sobre o resto, não sobre o número. Corrige valores
    objetivamente errados (`111st`), em método que ninguém do pipeline chama.
    Merece um teste novo: o `InflectorTest` do upstream não cobre `x11`–`x13` fora
    do primeiro. **Atenção ao alvo**: `I1`, `I2` e `I3` estão no `Inflector`, que é
    cópia vendorizada do **ModeShape** — o PR mais útil vai para lá, e o U-Schema só
    precisa reavaliar a cópia.
-6. **C3** — guarda de nulo em `compareNames`, ou anotação `@NonNull`. Não muda
+8. **C3** — guarda de nulo em `compareNames`, ou anotação `@NonNull`. Não muda
    comportamento em modelo válido.
-7. **C6** — trocar `&&` por `^` em `attributes`, alinhando com os irmãos. Sem
+9. **C6** — trocar `&&` por `^` em `attributes`, alinhando com os irmãos. Sem
    efeito hoje; previne regressão se a coleção puder ser nula no futuro.
-8. **#6** — leitura genérica de `_id`. Muda o domínio de entrada aceito (aceita
-   `_id` não-`ObjectId`), com o custo semântico de timestamps zerados. Requer
-   discussão sobre o que o `firstTimestamp` deve significar aí.
-9. **#8** — chamar `combineMetadata` no ponto de colapso inline
-   (`SchemaInference.java:207-211`), combinando `count`/`firstTimestamp`/
-   `lastTimestamp` da ocorrência nova na variação reaproveitada, em vez de
-   simplesmente descartá-la. **Muda números publicados** (contagens e
-   janelas de tempo de toda entidade cujas variações colapsam). Precisa vir
-   acompanhado dos dados de antes/depois (é exatamente o que a Fase 3
-   produz).
-10. **C1** — comparar todos os `isFeaturedBy` via multiset (correção já escrita,
+10. **#6** — leitura genérica de `_id`. Muda o domínio de entrada aceito (aceita
+    `_id` não-`ObjectId`), com o custo semântico de timestamps zerados. Requer
+    discussão sobre o que o `firstTimestamp` deve significar aí.
+11. **#8** — chamar `combineMetadata` no ponto de colapso inline
+    (`SchemaInference.java:207-211`), combinando `count`/`firstTimestamp`/
+    `lastTimestamp` da ocorrência nova na variação reaproveitada, em vez de
+    simplesmente descartá-la. **Muda números publicados** (contagens e
+    janelas de tempo de toda entidade cujas variações colapsam). Precisa vir
+    acompanhado dos dados de antes/depois (é exatamente o que a Fase 3
+    produz).
+12. **C1** — comparar todos os `isFeaturedBy` via multiset (correção já escrita,
     ver a seção C1). Muda vereditos do harness de validação do próprio upstream,
     mas só na direção segura: reprova a mais, nunca aprova a mais.
-11. **C2** — guarda de ciclo em `opposite`. Exige decidir a semântica de
+13. **C2** — guarda de ciclo em `opposite`. Exige decidir a semântica de
     comparação de referências mutuamente opostas antes de implementar.
-12. **C4** — pareamento máximo no lugar do guloso. O mais invasivo: toca quatro
+14. **C4** — pareamento máximo no lugar do guloso. O mais invasivo: toca quatro
     comparadores. Alternativa mais barata: tornar `compareNames` uma relação de
     equivalência (por exemplo, comparando formas canônicas singularizadas pelo
     Inflector), o que resolveria a causa em vez do sintoma.

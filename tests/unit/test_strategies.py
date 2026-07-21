@@ -231,6 +231,23 @@ def test_merge_homogeneo_empresta_elemento_do_lado_nao_vazio() -> None:
     assert items.lower_bounds == 0
 
 
+def test_merge_ambos_vazios_estoura_index_error() -> None:
+    """**M5** (`bugs_originais.md`) — `homogeneousArraysMerge.java:132`.
+
+    Cenário: campo `a` cheio x vazio reconcilia (o walk avança), campo `b`
+    vazio x vazio nos dois — `to_consider.inners[0]` estoura. Confirmado que o
+    Java faz o mesmo (`IndexOutOfBoundsException`, execução real, não só
+    leitura). Replicado fielmente: sem guarda de tamanho antes do índice.
+    """
+    v1 = _obj("Order", a=_array(NumberSC()), b=ArraySC())
+    v2 = _obj("Order", a=ArraySC(), b=ArraySC())
+
+    raw_entities: dict[str, list[SchemaComponent]] = {"Order": [v1, v2]}
+
+    with pytest.raises(IndexError):
+        merge_equivalent_evs(raw_entities)
+
+
 def test_merge_atualiza_referencia_por_identidade_ao_remover_o_perdedor() -> None:
     """``updateReferences`` (`:145-177`) — o perdedor pode estar referenciado alhures.
 

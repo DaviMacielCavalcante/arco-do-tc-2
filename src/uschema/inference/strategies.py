@@ -223,6 +223,15 @@ def _homogeneous_arrays_merge(to_consider: ArraySC, sc: ArraySC) -> bool:
     sempre se reconciliam por `min`/`max`, é aqui que `lower_bounds` do
     `raw.py` deixa de ser sempre `0` (o setter que a docstring de `ArraySC`
     já menciona como só existindo pra isso).
+
+    ⚠️ **M5** (`bugs_originais.md`): se os dois lados chegarem vazios ao
+    mesmo tempo, `to_consider.inners[0]` estoura `IndexError` — o original
+    (`:132`) tem o mesmo problema, `IndexOutOfBoundsException`, confirmado
+    por execução real do Java. O comentário do autor assume que isso "não
+    pode acontecer" (colapsariam antes), mas outro campo do mesmo par pode
+    reconciliar com sucesso (ex.: cheio x vazio) e o walk alcança um segundo
+    campo vazio nos dois lados. Replicado fielmente, sem guarda — não
+    adicionar `if to_consider.size() == 0: return False` aqui.
     """
     if not (to_consider.size() == 0 or sc.size() == 0 or to_consider.inners[0] == sc.inners[0]):
         return False
@@ -347,6 +356,13 @@ class ReferenceMatcher:
     O autor original comentou a própria lentidão (`:29-32`, "By using a list
     this matcher is just too slow") e manteve assim. Replicado como está —
     não é escopo do porte otimizar o que o original também não otimizou.
+
+    ⚠️ **M6** (`bugs_originais.md`): `key` entra crua na string do regex, sem
+    `re.escape`. O original faz o mesmo (`entry.getKey()` concatenado direto
+    em `DefaultReferenceMatcher.java:34-50`, confirmado por execução real) —
+    um metacaractere de regex em `key` (`.`, `+`, `(`, `[`, …) é interpretado
+    como regex, não como literal. Não escapar aqui: escapar divergiria do
+    oráculo para nomes de entidade que contenham esses caracteres.
     """
 
     def __init__(self, pairs: Iterable[tuple[str, EObject]]) -> None:

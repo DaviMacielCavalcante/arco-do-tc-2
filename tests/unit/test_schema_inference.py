@@ -48,11 +48,28 @@ def test_objeto_aninhado_capitaliza_o_nome_do_campo_sem_singularizar() -> None:
 
 
 def test_campos_ficam_em_ordem_alfabetica() -> None:
-    # `:191-194` — TreeSet. Diverge do Java só fora do BMP (irrelevante aqui).
+    # `:191-194` — TreeSet, ordem natural de string.
     result = SchemaInference().infer([_triple({"_type": "t", "z": 1, "a": 1, "m": 1})])
     [variacao] = result["T"]
     assert isinstance(variacao, ObjectSC)
     assert [nome for nome, _ in variacao.inners] == ["a", "m", "z"]
+
+
+def test_campos_fora_do_bmp_ordenam_por_code_unit_utf16_como_no_java() -> None:
+    """``String.compareTo`` compara por *code unit* UTF-16, não por code point.
+
+    ``"\\U00010000"`` (suplementar, fora do BMP) vira par substituto
+    ``\\ud800\\udc00`` nessa comparação — e ``\\ud800`` (55296) é numericamente
+    **menor** que ``\\ue000`` (57344, uso privado do BMP). Por code point,
+    porém, ``\\U00010000`` (65536) é **maior** que ``\\ue000`` — ordem oposta.
+    Java ordena pelo primeiro critério; o campo tem de refletir isso.
+    """
+    astral = "\U00010000"
+    bmp_privado = "\ue000"
+    result = SchemaInference().infer([_triple({"_type": "t", astral: 1, bmp_privado: 1})])
+    [variacao] = result["T"]
+    assert isinstance(variacao, ObjectSC)
+    assert [nome for nome, _ in variacao.inners] == [astral, bmp_privado]
 
 
 def test_entidade_raiz_sem_type_marker_usa_element_name_vazio() -> None:

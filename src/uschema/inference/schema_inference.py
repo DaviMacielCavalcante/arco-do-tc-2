@@ -57,6 +57,22 @@ _Joiner = Callable[[dict[str, list[SchemaComponent]], set[str]], None]
 _Merger = Callable[[dict[str, list[SchemaComponent]]], None]
 
 
+def _java_string_sort_key(value: str) -> bytes:
+    """Chave de ordenação que replica ``String.compareTo`` (Java, ``:191-194``).
+
+    Java compara ``String`` por *code unit* UTF-16 (``char``), não por code
+    point Unicode. Um caractere suplementar (fora do BMP) vira par substituto
+    (``0xD800-0xDFFF``) nessa comparação — e o primeiro code unit do par fica
+    numericamente **antes** da área de uso privado do BMP (``0xE000+``), mesmo
+    que o code point representado seja maior. ``sorted()`` do Python compara
+    por code point e diverge nesse caso; codificar em UTF-16 big-endian
+    reproduz a ordem de ``char`` do Java. ``surrogatepass`` só entra em jogo
+    se a string tiver substituto sem par (entrada mal-formada, não deveria
+    ocorrer em nome de campo) — evita ``UnicodeEncodeError`` em vez de estourar.
+    """
+    return value.encode("utf-16-be", "surrogatepass")
+
+
 class SchemaInference:
     """Infere ``rawEntities`` a partir de triplas — porte de ``SchemaInference.java``.
 
@@ -219,9 +235,12 @@ class SchemaInference:
         schema = ObjectSC(is_root=is_root, meta=meta)
         schema.entity_name = entity_name
 
-        # `:191-194` — TreeSet = ordem natural de string. `sorted()` do Python
-        # é por code point; diverge do Java (UTF-16 code unit) só fora do BMP.
-        fields = sorted(f for f in obj if f not in self._ignored_attributes)
+        # `:191-194` — TreeSet = ordem natural de string, por code unit UTF-16.
+        # `_java_string_sort_key` reproduz isso (ver docstring da função).
+        fields = sorted(
+            (f for f in obj if f not in self._ignored_attributes),
+            key=_java_string_sort_key,
+        )
 
         # `:197-198` — fase recursiva, um `ObjectMetadata()` zerado por campo:
         # a contagem real só existe no nível raiz, o resto vem depois via

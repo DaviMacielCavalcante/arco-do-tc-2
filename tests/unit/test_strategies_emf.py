@@ -28,7 +28,7 @@ from uschema.inference.strategies import (
     sort_structural_variations,
 )
 from uschema.intermediate.metadata import ObjectMetadata
-from uschema.intermediate.raw import BooleanSC, ObjectSC, StringSC
+from uschema.intermediate.raw import BooleanSC, ObjectSC, SchemaComponent, StringSC
 from uschema.metamodel.registry import load_metamodel
 
 pytestmark = pytest.mark.unit
@@ -158,6 +158,27 @@ def test_reference_matcher_sem_padrao_correspondente_devolve_none(
     assert matcher.maybe_match("totalPrice") is None
 
 
+def test_reference_matcher_m6_chave_com_metacaractere_regex_vira_wildcard(
+    metamodel: EPackage,
+) -> None:
+    """**M6** (`bugs_originais.md`) — `DefaultReferenceMatcher.java:34-50`.
+
+    A chave (nome de entidade) entra crua na string do regex, sem
+    `re.escape`/`Pattern.quote`. Um `.` literal em `"a.b"` vira "qualquer
+    caractere": `"aXb_id"` casa, mesmo o campo não contendo o ponto. Confirmado
+    que o Java original faz exatamente o mesmo (execução real,
+    `DefaultReferenceMatcher` compilado do commit pinado). Replicado
+    fielmente — não escapar a chave aqui.
+    """
+    entity = make_entity(metamodel, "Customer")
+    matcher = ReferenceMatcher([("a.b", entity)])
+
+    assert matcher.maybe_match("a.b_id") is entity
+    assert matcher.maybe_match("aXb_id") is entity, (
+        "'.' não escapado casa qualquer caractere, fiel ao oráculo"
+    )
+
+
 def test_create_reference_matcher_ignora_entidades_nao_raiz(metamodel: EPackage) -> None:
     root_entity = make_entity(metamodel, "Customer", root=True)
     inner_entity = make_entity(metamodel, "Address", root=False)
@@ -247,10 +268,10 @@ def test_null_sort_structural_variations_nao_faz_nada(metamodel: EPackage) -> No
 # --- portado por completude ("fiel e completo"), ver docstring da classe. --
 
 
-def _pair_schema(name: str, **fields: object) -> ObjectSC:
+def _pair_schema(name: str, **fields: SchemaComponent) -> ObjectSC:
     obj = ObjectSC(entity_name=name, meta=ObjectMetadata())
     for key, value in fields.items():
-        obj.add((key, value))  # type: ignore[arg-type]
+        obj.add((key, value))
     return obj
 
 
