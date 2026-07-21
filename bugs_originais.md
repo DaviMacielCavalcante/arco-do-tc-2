@@ -24,6 +24,10 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
   vendorizado do **ModeShape**, então os defeitos são *upstream do upstream*.
 - **`M1`** — achado **novo**, em `ObjectMetadata` (`.../metadata/`), levantado ao
   portar o modelo intermediário (Fase 1.1).
+- **`M2`** — achado **novo**, em `SchemaInference`/`AliasedAggregatedEntityJoiner`,
+  levantado e **confirmado por teste** ao portar a inferência (Fase 1.2).
+- **`M3`**/**`M4`** — achados **novos**, em `DefaultStructuralVariationSorter`
+  (`.../process/util/`), levantados ao portar as estratégias EMF (Fase 1.3b).
 
 Todas as citações de linha referem-se ao `HEAD` do upstream, salvo indicação em
 contrário.
@@ -41,7 +45,7 @@ contrário.
 | #5 | `Neo4j2USchemaMain` | hardcode/caminho Hadoop | build | patch no oráculo |
 | **#6** | `Helpers.java:66` | `_id` assumido `ObjectId` | **crash** | corrigido por construção |
 | **#7** | `USchemaModelBuilder.java:255` | array vazio indexado | **crash** | corrigido por construção |
-| **#8** | `SchemaInference.java:209` | `meta` descartado no colapso | **corretude** | corrigido por construção |
+| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **corretude** | replicado (fiel) |
 | **C1** | `CompareReference.java:38-41` | só compara `isFeaturedBy[0]` | corretude | replicado (fiel) |
 | **C2** | `CompareReference.java:27` | recursão de `opposite` sem guarda | crash latente | replicado (fiel) |
 | **C3** | `CompareSchemaType.java:95-96` | `compareNames` sem guarda de nulo | crash latente | replicado (fiel) |
@@ -53,6 +57,9 @@ contrário.
 | I2 | `Inflector.java:454-459` | `titleCase` sem guarda de nulo (NPE) | crash latente | não replicado (devolve `None`) |
 | I3 | `Inflector.java:445` | javadoc do `titleCase` promete o que o código não faz | documentação | replicado (fiel ao **código**) |
 | **M1** | `ObjectMetadata.java:55` | sentinela `0` só reconhecida de um lado | **corretude** | replicado (fiel) |
+| **M2** | `SchemaInference.java:100-104` | `innerCountAndTimestampsAdjust` estoura quando o Joiner funde uma entidade interna | **crash confirmado** | replicado (fiel) |
+| **M3** | `DefaultStructuralVariationSorter.java:40` | `sortByCount` não ordena (`ECollections.sort` comentado) | **corretude** | replicado (fiel) |
+| **M4** | `DefaultStructuralVariationSorter.java:28,34,46` | comparadores devolvem só `-1`/`1`, nunca `0` — não são ordem total | **corretude** | replicado (fiel) |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
@@ -127,62 +134,49 @@ if (sc.size() == 0 || !(sc.getInners().get(0) instanceof ObjectSC))
 
 ## #8 — `meta` descartado ao colapsar variações
 
-**Sítio:** `es.um.uschema.doc2uschema/.../process/SchemaInference.java:201-211`.
+**Sítio:** `es.um.uschema.doc2uschema/.../process/SchemaInference.java:207-211`.
 
 ```java
-List<SchemaComponent> entityVariations = rawEntities.get(schema.entityName);
-SchemaComponent retSchema = schema;
-
 if (entityVariations != null)
 {
     Optional<SchemaComponent> foundSchema =
             entityVariations.stream().filter(schema::equals).findFirst();
     if (foundSchema.isPresent())
-        retSchema = foundSchema.get();   // <-- `schema.meta` é perdido aqui
+        retSchema = foundSchema.get();
     else
         entityVariations.add(schema);
 }
 ```
 
-**Sintoma.** Quando um documento produz uma forma estruturalmente igual a uma
-variação já registrada, a variação existente é reusada e o `meta` do documento
-recém-inferido (`count`, `firstTimestamp`, `lastTimestamp`) é **jogado fora**.
-A contagem por variação fica menor que o volume real.
+**Sintoma.** Ao reconhecer uma variação estruturalmente igual a uma já
+registrada, o código reaproveita a variação existente (`retSchema =
+foundSchema.get()`) e descarta `schema` inteiro — sem combinar nenhum
+metadado. O `ObjectMetadata` da ocorrência nova (`count`,
+`firstTimestamp`, `lastTimestamp`) desaparece por completo, não só parte
+dele. Como qualquer campo array aninhado também pende dessa árvore
+descartada, o `upper_bounds` dele se perde pela mesma razão.
 
-**Por que só aparece com array de tamanho variável.** O gatilho é o
-`ArraySC.equals`, em `.../intermediate/raw/ArraySC.java:93-98`:
+Exemplo: duas ocorrências da mesma entidade, campos idênticos,
+`count`/`timestamps` diferentes — colapsam em 1 variação, e o `meta` final
+é exatamente o da primeira ocorrência vista. `t1(count=3)` + `t2(count=2)`
+→ `count` final = 3, não 5.
 
-```java
-// By ignoring the count we make all homogeneous arrays equivalent if the
-// inner element is the same (checked in the next instruction)
-// Another step is needed to reconcile zero size arrays with other lengths.
-// Also, in this step, lower and upper bounds have to be reconciled.
-//if (this.isHomogeneous() && this.homogeneous_size != otherA.homogeneous_size)
-//    return false;
-```
+O gatilho de colapso é `ArraySC.equals` ignorando o tamanho do array
+(`.../intermediate/raw/ArraySC.java:93-98`, comentário do próprio autor:
+*"Another step is needed to reconcile zero size arrays with other
+lengths"*) — sem essa igualdade frouxa, o colapso quase nunca ocorreria e
+o #8 ficaria invisível.
 
-O check de tamanho está **comentado**. Dois documentos com `tags: [a]` e
-`tags: [a, b, c]` produzem `ArraySC` iguais, colapsam na mesma variação, e o
-segundo tem seu `count` descartado. Sem essa igualdade frouxa, o colapso quase
-nunca ocorreria e o bug ficaria invisível.
+**Decisão no porte: replicar.** `combine_metadata` não é chamado neste
+ponto de colapso, de propósito — a igualdade frouxa do `ArraySC` é
+load-bearing e deve ser preservada (sem ela o número de variações
+explodiria e divergiria do oráculo), mas replicá-la **junto** com a
+ausência de combinação é o que reproduz o #8 fielmente.
 
-De novo, o autor anotou o problema (*"Another step is needed to reconcile zero
-size arrays with other lengths"*) sem resolvê-lo.
-
-**Correção.** Combinar o `meta` ao reusar, em vez de descartar:
-
-```java
-if (foundSchema.isPresent()) {
-    foundSchema.get().meta.combineMetadata(schema.meta);
-    retSchema = foundSchema.get();
-}
-```
-
-**A igualdade frouxa é load-bearing e deve ser preservada.** `ArraySC.__eq__`
-ignorando o tamanho é decisão deliberada de design (é o que faz `[a]` e
-`[a,b,c]` serem a mesma variação estrutural). O porte replica a igualdade **e**
-aplica a correção do `combineMetadata` — as duas coisas juntas. Corrigir só a
-igualdade explodiria o número de variações e divergiria do oráculo.
+**Correção upstream (candidata, não aplicada).** Chamar `combineMetadata`
+ao reaproveitar a variação, combinando `count`/`firstTimestamp`/
+`lastTimestamp` da ocorrência nova na existente. Muda contagens e janelas
+de tempo publicadas — requer dados de antes/depois antes de propor.
 
 ### Incerteza declarada, adjacente ao #8
 
@@ -744,6 +738,150 @@ válidos — mas só depois de a equivalência estar demonstrada.
 
 ---
 
+## M2 — `innerCountAndTimestampsAdjust` estoura quando o Joiner funde uma entidade interna
+
+**Sítio:** `es.um.uschema.doc2uschema/.../process/SchemaInference.java:100-104`,
+e a costura com `DefaultAliasedAggregatedEntityJoiner.java:34`.
+
+```java
+// SchemaInference.java — sem guarda de null:
+for (String innerSchema : innerSchemaNames)
+{
+    for (SchemaComponent schComponent : rawEntities.get(innerSchema))   // <-- NPE se innerSchema não existe mais
+    ...
+}
+```
+
+`infer(IAJArray rows)` roda `joiner.joinAggregatedEntities` **antes** de
+`innerCountAndTimestampsAdjust` (`:138-139`). O Joiner, ao achar um alias,
+remove a chave de `rawEntities`
+(`DefaultAliasedAggregatedEntityJoiner.java:34`, `rawEntities.remove(iSchemaName)`)
+— mas `innerSchemaNames` (o `Set`) **nunca** é atualizado, nem pelo Joiner nem
+por ninguém depois. `innerCountAndTimestampsAdjust` continua iterando sobre o
+`Set` inteiro e faz `rawEntities.get(innerSchema)` sem checar `null`.
+
+**Sintoma confirmado (não só teórico).** Testado com o porte já feito da 1.2 e
+1.3a: **toda vez** que o Joiner acha um match — ou seja, toda vez que ele não é
+um no-op —, o passo seguinte estoura. Não é um caso extremo raro: é uma
+consequência garantida de qualquer fusão bem-sucedida do Joiner. Reproduzido em
+`tests/unit/test_schema_inference.py::test_joiner_bem_sucedido_estoura_key_error_no_passo_seguinte`.
+
+**Alcance real, ainda não verificado.** Não sei se os datasets de teste
+(Northwind, mintest) têm algum campo cujo nome bata com alguma das 10
+`AggregateHintWords` (`has`, `with`, `set`, `list`, `setof`, `listof`, `array`,
+`arrayof`, `collection`, `collectionof`) contra outra entidade já registrada.
+Se nenhum bater, o Joiner nunca funde nada nesses dados, e este defeito fica
+invisível neles — mas segue real e alcançável em qualquer dataset com um campo
+assim nomeado.
+
+**Decisão no porte (2026-07-21): replicar fielmente, sem guarda.** O
+`KeyError` do Python é o análogo direto do `NullPointerException` do Java —
+mesmo ponto, mesma causa, mesma ausência de tratamento. Não adicionar
+`if innerSchema not in raw_entities: continue` — isso seria "consertar" antes
+de demonstrar equivalência com o oráculo, e mudaria o comportamento observável
+(o Java quebra; um porte que não quebra já divergiu).
+
+**Correção upstream (candidata, não aplicada).** Remover de `innerSchemaNames`
+qualquer nome que o Joiner tenha absorvido (ou filtrar em
+`innerCountAndTimestampsAdjust` os nomes que ainda existem em `rawEntities`).
+Precisa de dado antes/depois pra avaliar impacto — mesma cautela do #8/M1.
+
+---
+
+## M3 — `sortByCount` não ordena: `ECollections.sort` está comentado
+
+**Sítio:** `es.um.uschema.doc2uschema/.../process/util/DefaultStructuralVariationSorter.java:36-42`.
+
+```java
+private void sortByCount(EList<StructuralVariation> variations)
+{
+    //ECollections.sort(variations, new CompareByCount());   // :40, comentado
+    reOrderVariationIds(variations);
+}
+```
+
+**Sintoma.** `sort` (`:13-24`) escolhe o critério em cascata —
+`firstTimestamp` se algum for não-zero, senão `lastTimestamp`, senão `count`,
+senão nº de propriedades. O terceiro ramo chama `sortByCount`, mas a única
+linha que ordenaria de fato está comentada. O método só renumera
+`variationId` sequencialmente (`:41`), na ordem em que as variações já
+estavam — não ordena por `count` nenhuma.
+
+**Alcance.** Dispara sempre que nenhuma variação tem `firstTimestamp` nem
+`lastTimestamp` diferente de zero, mas ao menos uma tem `count != 0` — ou
+seja, exatamente o caso de dados sem `ObjectId` (**#6**) processados sem
+timestamp real, como o Northwind. É um caminho plausivelmente comum, não um
+canto raro.
+
+**Decisão no porte: replicar fielmente.** `sort_structural_variations` (ver
+docstring) reproduz o no-op: no ramo de `count`, não chama `.sort(...)`
+nenhum — só `_reorder_variation_ids`. Adicionar a ordenação que falta seria
+"consertar" antes de demonstrar equivalência estrutural; e mudaria a ordem
+observável de `variationId` em qualquer dataset que caia nesse ramo.
+
+**Correção upstream (candidata, não aplicada).** Descomentar o
+`ECollections.sort(variations, new CompareByCount())` — ou, no porte,
+`variations.sort(key=functools.cmp_to_key(_compare_by_count))` com um
+comparador análogo aos outros dois. Precisa de dado antes/depois (mesma
+cautela do #8/M1/M2): muda a ordem de `variationId` publicada.
+
+---
+
+## M4 — os comparadores de `StructuralVariationSorter` não são uma ordem total
+
+**Sítio:** `DefaultStructuralVariationSorter.java:26-30` (`compareByFirstTimestamp`),
+`:32-36` (`compareByLastTimestamp`), `:44-48` (`compareByPropertyNumber`).
+
+```java
+private int compareByFirstTimestamp(StructuralVariation v1, StructuralVariation v2)
+{
+    if (v1.getFirstTimestamp() < v2.getFirstTimestamp())
+        return -1;
+    return 1;                              // nunca 0, mesmo se forem iguais
+}
+```
+
+As outras duas repetem exatamente essa forma, cada uma sobre o campo que dá
+nome ao método.
+
+**Sintoma.** Um `Comparator<T>` só define uma ordem total se `compare(a, b)
+== 0` sempre que `a` e `b` forem equivalentes pro critério. Aqui, dois
+`StructuralVariation` com o mesmo `firstTimestamp` (ou `lastTimestamp`, ou nº
+de propriedades) nunca empatam — o segundo argumento sempre "vence"
+(`return 1`), inclusive quando `v1 == v2` de verdade (comparação de um
+elemento consigo mesmo durante o sort, por exemplo). Não é um bug que lance
+exceção: `Collections.sort`/`List.sort` do Java toleram comparadores
+inconsistentes (ao contrário do `TimSort` de outras linguagens, que pode
+lançar `IllegalArgumentException` ao detectar contrato violado) — o resultado
+é só uma ordem entre "iguais" que depende de detalhes do algoritmo de
+ordenação, não do critério declarado.
+
+**Decisão no porte: replicar fielmente.** `_compare_by_first_timestamp`,
+`_compare_by_last_timestamp` e `_compare_by_property_number` (ver
+`strategies.py`) devolvem `-1`/`1` na mesma forma, nunca `0` — passadas a
+`functools.cmp_to_key`, que aceita esse contrato quebrado sem reclamar (o
+Python também não valida consistência de comparador). A ordem resultante
+entre variações "empatadas" no critério ativo fica sujeita ao algoritmo de
+ordenação (Timsort, em ambas as linguagens) — não é a mesma coisa que dizer
+que a ordem é estável ou previsível; é só dizer que não estoura. **Deve ser
+fixada por teste** o comportamento observado, não o que "deveria" ser.
+
+**Correção upstream (candidata, não aplicada).** Cada comparador devolver
+`0` quando os campos forem iguais:
+
+```java
+if (v1.getFirstTimestamp() < v2.getFirstTimestamp()) return -1;
+if (v1.getFirstTimestamp() > v2.getFirstTimestamp()) return 1;
+return 0;
+```
+
+Não muda o veredito de equivalência estrutural (`variationId` já não entra
+em `CompareStructuralVariation`, ver "O que não é defeito"), mas pode mudar
+a **ordem de listagem** das variações no XMI — outro caso que exige dado
+antes/depois antes de propor.
+
+---
+
 ## O que **não** é defeito
 
 Registrado para evitar que uma leitura futura os "corrija":
@@ -801,8 +939,12 @@ Ordem sugerida, do mais defensável ao mais invasivo:
 8. **#6** — leitura genérica de `_id`. Muda o domínio de entrada aceito (aceita
    `_id` não-`ObjectId`), com o custo semântico de timestamps zerados. Requer
    discussão sobre o que o `firstTimestamp` deve significar aí.
-9. **#8** — `combineMetadata` no colapso. **Muda números publicados.** Precisa
-   vir acompanhado dos dados de antes/depois (é exatamente o que a Fase 3
+9. **#8** — chamar `combineMetadata` no ponto de colapso inline
+   (`SchemaInference.java:207-211`), combinando `count`/`firstTimestamp`/
+   `lastTimestamp` da ocorrência nova na variação reaproveitada, em vez de
+   simplesmente descartá-la. **Muda números publicados** (contagens e
+   janelas de tempo de toda entidade cujas variações colapsam). Precisa vir
+   acompanhado dos dados de antes/depois (é exatamente o que a Fase 3
    produz).
 10. **C1** — comparar todos os `isFeaturedBy` via multiset (correção já escrita,
     ver a seção C1). Muda vereditos do harness de validação do próprio upstream,
