@@ -291,9 +291,14 @@ class ArraySC(SchemaComponent):
         está comentada em ``ArraySC.java:96-97``. É deliberado — o comentário do
         autor nas ``:90-95`` explica que reconciliar tamanhos exigiria um passo
         a mais — e é a origem do bug **#8**: dois arrays homogêneos de tamanhos
-        diferentes são iguais, as variações colapsam, e o ``meta`` da segunda é
-        descartado pelo ``infer``. A correção do #8 vive em 1.2 (combinar em vez
-        de descartar); **esta** igualdade fica como está.
+        diferentes são iguais, as variações colapsam e só uma sobrevive.
+        ⚠️ Quando isso acontece, o ``infer`` (1.2) **não** combina ``meta``
+        nenhum — ``SchemaInference.java:207-211`` só faz
+        ``retSchema = foundSchema.get();``. O ``meta`` inteiro da ocorrência
+        descartada (count+timestamps) some, e junto com ele qualquer
+        ``upper_bounds`` de array aninhado que essa árvore carregava. 1.2
+        replica isso fielmente, sem "consertar"; ver ``bugs_originais.md`` #8
+        para a mecânica completa.
         """
         if other is self:
             return True

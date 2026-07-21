@@ -191,7 +191,7 @@ afirme o valor **corrigido**.
 | Teste | Bug | O que fazer no porte |
 |---|---|---|
 | `ObjectIdTest` | **#6** (`_id` assumido `ObjectId`) | A asserção existente **continua válida** — um `_id` que *é* `ObjectId` deve continuar sendo inferido como `ObjectId`. O bug é o **crash** quando não é. → **acrescentar** um caso com `_id` de outro tipo (string, int), afirmando que infere sem estourar. |
-| `CountTimestampTest` | **#8** (`meta` descartado no colapso) | Verificar, ao portar, se `CountTimestamp.json` tem **array de tamanho variável** — se não tiver, o #8 não dispara e o teste porta limpo, com os mesmos números. → **acrescentar** um caso com array de tamanho variável afirmando a contagem **correta** (soma = volume real). |
+| `CountTimestampTest` | **#8** (`meta` inteiro — count+timestamps — descartado no colapso de variações, ver `bugs_originais.md`) | Verificar, ao portar, se `CountTimestamp.json` tem alguma entidade cujas variações colapsem (não precisa de array: qualquer forma estruturalmente igual dispara). Se colapsar, a asserção de `count`/timestamp do JUnit original **já reflete** o bug (o teste do autor não corrigiu isso) — portar como está, sem "consertar". → **acrescentar** um caso novo confirmando que `count`/timestamps da segunda ocorrência somem por completo (não sejam somados) quando duas variações colapsam. |
 | *(nenhum)* | **#7** (array vazio indexado) | Nenhum JUnit cobre array vazio. → **teste novo**. É o mesmo dado que originou o **C8** (o `privileges` do northwind). |
 
 ---

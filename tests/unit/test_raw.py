@@ -108,8 +108,10 @@ def test_is_root_entra_na_igualdade() -> None:
 def test_meta_nao_entra_na_igualdade() -> None:
     """O Java compara só ``entityName``/``isRoot``/``inners`` (``:32-34``).
 
-    É o que permite o colapso de duas triplas com contagens diferentes — e é
-    por isso que a correção do #8 tem de combinar o ``meta`` explicitamente.
+    É o que permite duas triplas com contagens diferentes colapsarem na mesma
+    variação — e é a origem do bug **#8**: `SchemaInference.java:207-211` não
+    combina nada ao reusar (`retSchema = foundSchema.get();`, só isso), então o
+    `meta` inteiro da ocorrência descartada some. Ver `bugs_originais.md` #8.
     """
     com_meta = _obj(a=NumberSC())
     com_meta.meta = ObjectMetadata(count=7, first_timestamp=1, last_timestamp=2)
@@ -222,8 +224,8 @@ def test_arrays_homogeneos_de_tamanhos_diferentes_sao_iguais() -> None:
     """**Origem do bug #8**, replicada de propósito (``ArraySC.java:96-97``).
 
     A checagem de ``homogeneous_size`` está comentada no original. Sem essa
-    igualdade frouxa o #8 nem dispara — e é por isso que a correção do #8 (1.2)
-    combina o ``meta`` em vez de mexer aqui.
+    igualdade frouxa o #8 nem dispara — é o gatilho do colapso que descarta o
+    ``meta`` inteiro da ocorrência nova (ver ``bugs_originais.md`` #8).
     """
     tres = _array(*[NumberSC()] * 3)
     sete = _array(*[NumberSC()] * 7)

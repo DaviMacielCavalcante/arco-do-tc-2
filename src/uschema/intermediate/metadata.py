@@ -1,20 +1,24 @@
 """Metadados de ocorrência de uma variação estrutural (Fase 1.1).
 
 Porte de ``ObjectMetadata.java``. Carrega o que a tripla trouxe — quantas
-ocorrências e a janela de tempo — e sabe **combinar** duas dessas janelas, que é
-a operação no centro da correção do bug **#8**.
+ocorrências e a janela de tempo — e sabe **combinar** duas dessas janelas.
 
-Por que ``combine_metadata`` é load-bearing
--------------------------------------------
-O ``SchemaInference``, ao reencontrar uma variação estruturalmente igual a uma já
-vista, faz ``retSchema = foundSchema.get()`` e **descarta o ``meta`` da nova**
-(``SchemaInference.java:204-212``) — a contagem daquela tripla simplesmente
-some. É o bug #8. A correção do porte é combinar em vez de descartar, e é este
-módulo que fornece a operação.
+Onde ``combine_metadata`` é chamado (e onde **não** é)
+--------------------------------------------------------
+É chamado em ``innerCountAndTimestampsAdjust`` (``SchemaInference.java:100-104``
+— propaga meta das ocorrências-raiz pras entidades internas, ver **M2** em
+``bugs_originais.md``) e em ``EVariationMerger.mergeEquivalentEVs``
+(``DefaultEVariationMerger.java:36`` — Fase 1.3a). **Não** é chamado no colapso
+de variações dentro do próprio ``infer`` (``SchemaInference.java:207-211``):
+ali o original só faz ``retSchema = foundSchema.get();`` e mais nada — o
+``meta`` inteiro da ocorrência nova (count **e** timestamps) é descartado, sem
+combinar. Isso é o bug **#8** (ver ``bugs_originais.md``).
 
-Ele dispara quando ``ArraySC.__eq__`` colapsa duas triplas de **tamanho de array
-diferente** (a igualdade que ignora o tamanho, ``ArraySC.java:82-101``) — a única
-forma de duas triplas distintas do map-reduce virarem "iguais".
+``combine_metadata`` (em ``innerCountAndTimestampsAdjust``/``EVariationMerger``)
+continua disparando mesmo quando ``ArraySC.__eq__`` colapsa duas árvores de
+**tamanho de array diferente** (a igualdade que ignora o tamanho,
+``ArraySC.java:82-101``) — só que isso é irrelevante pro #8: o #8 acontece
+**antes**, no colapso inline de ``infer``, onde nenhuma combinação roda.
 """
 
 from __future__ import annotations

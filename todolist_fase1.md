@@ -36,7 +36,7 @@ Ordem derivada das dependências **reais** do código, não da numeração do ro
 | Etapa | Depende de | Libera | Verificado |
 |---|---|---|---|
 | **1.0** tripla | — | 1.1, 1.2, fixtures do bloco B | `SchemaInference:86-89` lê `schema`/`count`/`firstTimestamp`/`lastTimestamp` |
-| **1.1** raw + meta | 1.0 | 1.2, 1.3a | `infer` constrói `ObjectSC`/`ArraySC`; `combineMetadata` é a correção do #8 |
+| **1.1** raw + meta | 1.0 | 1.2, 1.3a | `infer` constrói `ObjectSC`/`ArraySC`; `combineMetadata` NÃO roda no colapso de variações (`:207-211`) — essa ausência é o #8 |
 | **1.3a** joiner/merger | 1.1 | passos 4 e 6 de 1.2 | operam sobre `Map<String,List<SchemaComponent>>` — nível **raw**, sem EMF |
 | **1.2** infer | 1.0, 1.1, 1.3a, 0.6 | 1.4 | `SchemaInference:183,188,233` chamam o Inflector |
 | **1.3b** estratégias EMF | 0.1, 0.3, 0.6 | 1.4 | `DefaultFeatureAnalyzer:17` instancia `CompareFeature` (**código da 0.3**) |
@@ -102,7 +102,7 @@ falharia por motivo errado.
 - [x] `SchemaComponent` (base) + `ObjectSC`, `ArraySC`, `StringSC`, `NumberSC`, `BooleanSC`, `NullSC`, `ObjectIdSC` como `dataclasses`.
 - [x] **`SchemaComponent.__eq__` compara o nome da classe** (`SchemaComponent.java:8`: `getClass().getName().equals(...)`). As folhas (`StringSC`/`NumberSC`/…) **não sobrescrevem** — dois `StringSC` quaisquer são iguais. O Java estoura `NullPointerException` se `other` for `null`; decidir e **registrar** se replicamos (recomendo não replicar — é linha faltando, não semântica, como o `I2` do Inflector).
 - [x] **`ObjectSC.__eq__` = `entityName` + `isRoot` + `inners`** (`ObjectSC.java:33-34`), onde `inners` é **lista ordenada** de pares `(nome, SchemaComponent)` → **a ordem dos campos importa**. `__hash__` = `entityName ^ isRoot ^ inners` (`ObjectSC.java:24`). ⚠️ **Divergência registrada:** no Java esse `hashCode` estoura `NullPointerException` com `entityName` nulo — caso que o `RawSchemaGen` produz; no porte `hash(None)` é válido e não estoura. Guarda faltando, não semântica (mesma família do `I2`), travado por `test_hash_com_entity_name_nulo_nao_estoura`. **A checagem de tipo é `isinstance`, não classe exata** — `ObjectSC.java:31` e `ArraySC.java:86` usam `instanceof`, ao contrário da base (`SchemaComponent.java:8`, `getClass().getName()`); a assimetria é do original e está replicada.
-- [x] **`ArraySC.__eq__` ignora o tamanho** (`ArraySC.java:82-101`, com a checagem de `homogeneous_size` **comentada** na `:97` no original). Compara `homogeneous` + `inners`. `__hash__` = `inners` apenas. **É deliberado e é a origem do #8** — replicar junto com a correção em 1.2.
+- [x] **`ArraySC.__eq__` ignora o tamanho** (`ArraySC.java:82-101`, com a checagem de `homogeneous_size` **comentada** na `:97` no original). Compara `homogeneous` + `inners`. `__hash__` = `inners` apenas. **É deliberado e é a origem do #8** — replicar junto com o #8 (colapso de variações sem `combine_metadata`, 1.2): são duas faces do mesmo ponto, sem a igualdade frouxa o #8 nem dispara.
 - [x] **`ArraySC.add`** (`ArraySC.java:38-67`), e é mais sutil que parece: enquanto homogêneo, `inners` guarda **um só** elemento e `homogeneous_size` conta; ao aparecer um diferente, vira heterogêneo e `inners` é **reconstruído** com `nCopies(homogeneous_size, firstSc) + sc`. `upperBounds` incrementa sempre; `lowerBounds` fica 0.
 - [x] **`ArraySC.size()`** devolve `homogeneous_size` se homogêneo, senão `len(inners)` (`ArraySC.java:106-112`) — é o que faz o guarda do #7 funcionar (array vazio ⇒ `size()==0` **e** `inners` vazio).
 - [x] `ObjectMetadata` (count/firstTimestamp/lastTimestamp) + **`combine_metadata`** (`ObjectMetadata.java:50-60`): `count += orig.count`; `firstTimestamp = min` e `lastTimestamp = max`, **ambos com `0` como sentinela** (`if firstTimestamp == 0 or orig.firstTimestamp < firstTimestamp`). O construtor default deixa tudo em 0. ⚠️ A sentinela só vale de **um lado** — defeito novo, catalogado como **M1** em `bugs_originais.md`, replicado e travado por teste.
@@ -117,22 +117,22 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 ---
 
-## 1.2 — `SchemaInference.infer`
+## 1.2 — `SchemaInference.infer` ✅
 
 > Ordem dos passos verificada em `SchemaInference.java:125-146`. **Não reordenar.**
 
-- [ ] `infer(rows)`: `validateRows` → `forEach` das triplas → `joiner.joinAggregatedEntities` → `innerCountAndTimestampsAdjust` → `merger.mergeEquivalentEVs`.
-- [ ] **`infer` recursivo de objeto** (`SchemaInference:176-225`):
-  - [ ] nome da entidade: se raiz, `capitalize(n["_type"])`; senão `capitalize(elementName)` (`:183,188`).
-  - [ ] campos **ordenados** e filtrados por `config.ignored_attributes` (`:193-194`, via `TreeSet` na `:194`). Ordenação natural de string do Java = ordem de **code unit UTF-16**; o `sorted()` do Python é code point — divergem só fora do BMP (irrelevante aqui, mas registrar).
-  - [ ] objeto aninhado → entidade interna (`innerSchemaNames`), e é assim que agregado vira `EntityType`. **Sutileza:** `innerSchemaNames.add` só ocorre no ramo em que a entidade é **nova** (`:220-221`) — se o nome já existia, não entra.
-- [ ] **`infer` de array** (`SchemaInference:227-245`): `singularize(elementName)` no nome do inner (`:233`) e **`LinkedHashSet` para deduplicar** os inners (`:237-242`).
-- [ ] **Correção do #8 por construção** (`SchemaInference:204-212`): ao reencontrar uma variação igual, o Java faz `retSchema = foundSchema.get()` e **descarta o `meta` do novo** — a contagem daquela tripla some. Corrigir combinando: `ret_schema.meta.combine_metadata(schema.meta)`. Dispara quando `ArraySC.__eq__` colapsa duas triplas de **tamanho de array diferente** (a única forma de duas triplas distintas do map-reduce virarem "iguais").
-- [ ] `innerCountAndTimestampsAdjust` (`:92-123`) — propaga meta das ocorrências-raiz para as internas (que nascem em 0), via `containsSchemaComponent`. O original traz um `FIXME: I'm not sure this will work for n levels of aggregation` (`:94`) — **é do autor, não nosso**; portar como está e catalogar em `bugs_originais.md` se virar divergência.
-- [ ] `SchemaInferenceConfig` + `Default*`: `ignored = {"_type"}` e `type_marker = "_type"` (`DefaultSchemaInferenceConfig.java:9,20`) — o `_type` é **marcador e ignorado**, e é por isso que não aparece no modelo final (é o que o `TypesTest` fixa).
-- [ ] Testes: `CountTimestampTest`, `ObjectIdTest`, `TypesTest` (bloco B — cortar na tripla, ver 1.6) + **teste novo de array de tamanho variável** afirmando a contagem correta (soma = volume real).
+- [x] `infer(rows)`: `validateRows` (já em 1.0) → `forEach` das triplas → `joiner.joinAggregatedEntities` → `innerCountAndTimestampsAdjust` → `merger.mergeEquivalentEVs`.
+- [x] **`infer` recursivo de objeto** (`SchemaInference:176-225`):
+  - [x] nome da entidade: se raiz, `capitalize(n["_type"])`; senão `capitalize(elementName)` (`:183,188`).
+  - [x] campos **ordenados** e filtrados por `config.ignored_attributes` (`:193-194`, via `TreeSet` na `:194`). Ordenação natural de string do Java = ordem de **code unit UTF-16**; o `sorted()` do Python é code point — divergem só fora do BMP (irrelevante aqui, mas registrado).
+  - [x] objeto aninhado → entidade interna (`innerSchemaNames`), e é assim que agregado vira `EntityType`. **Sutileza:** `innerSchemaNames.add` só ocorre no ramo em que a entidade é **nova** (`:220-221`) — se o nome já existia, não entra.
+- [x] **`infer` de array** (`SchemaInference:227-245`): `singularize(elementName)` no nome do inner (`:233`) e **`LinkedHashSet` para deduplicar** os inners (`:237-242`, via `dict.fromkeys` no porte).
+- [x] **`#8`** — ao reencontrar uma variação igual (`SchemaInference:207-211`), o Java só faz `retSchema = foundSchema.get();`, sem combinar nada. O `meta` inteiro da ocorrência nova (count **e** timestamps) é descartado, não só bounds de array aninhado. Replicado fielmente, sem `combine_metadata` nesse ponto. Travado por teste (`test_bug_8_colapso_descarta_o_meta_inteiro_da_segunda_ocorrencia`, `test_bug_8_tambem_descarta_upper_bounds_do_array_aninhado`).
+- [x] `innerCountAndTimestampsAdjust` (`:92-123`) — propaga meta das ocorrências-raiz para as internas (que nascem em 0), via `containsSchemaComponent`. O `FIXME` do autor (`:94`) permanece **não investigado**, catalogado em `bugs_originais.md`. ⚠️ **Achado novo (M2), confirmado por teste:** quando o Joiner funde uma entidade interna com outra existente, ele remove a chave de `rawEntities`, mas `innerSchemaNames` não é atualizado — o passo seguinte estoura (`NullPointerException` no Java, `KeyError` no porte) **toda vez** que o Joiner não é no-op. Replicado fielmente, sem guarda, por decisão explícita. Ver `bugs_originais.md` M2. Em aberto: se Northwind/mintest disparam isso.
+- [x] `SchemaInferenceConfig` + `Default*`: `ignored = {"_type"}` e `type_marker = "_type"` (`DefaultSchemaInferenceConfig.java:9,20`) — o `_type` é **marcador e ignorado**, e é por isso que não aparece no modelo final. Portado como constantes de módulo (sem classe — não há `Default*` alternativo, mesmo raciocínio da 1.3a).
+- [ ] Testes: `CountTimestampTest`, `ObjectIdTest`, `TypesTest` — **adiado pra 1.6** de propósito (bloco B, precisa cortar na tripla via fixture do oráculo). O **teste novo de array de tamanho variável** afirmando a contagem correta (soma = volume real) já está feito (`test_bug_8_...`).
 
-**Saída:** `inference/schema_inference.py` com os 6 passos na ordem do Java e o #8 corrigido.
+**Saída:** ✅ `inference/schema_inference.py` (classe `SchemaInference`) com os 6 passos na ordem do Java e o `#8` replicado fielmente: **nenhum** `combine_metadata` roda no colapso de variações — o `meta` inteiro (count+timestamps) da segunda ocorrência é descartado; `tests/unit/test_schema_inference.py` (17 casos). Achados novos catalogados: `#8`, `M2`. `mypy --strict` verificado na máquina do usuário (Python 3.12, `uv run`): limpo.
 
 ---
 
@@ -149,18 +149,35 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 - [ ] `AliasedAggregatedEntityJoiner` + `Default*` — une entidades-alias via as 10 `AggregateHintWords` (`has`, `with`, `set`, `list`, …), testando `hint+entity` e `entity+hint` com `equalsIgnoreCase` (`DefaultAliasedAggregatedEntityJoiner.java:13-14,21-24`). O `findFirst` (`:26`) tem comentário do autor (`:24`) admitindo que ignorar os demais casamentos "could lead us to some bad-named entities" — **manter**.
 - [ ] `EVariationMerger` + `Default*` — laço `do/while` até estabilizar; ao fundir, `updateReferences` + `combineMetadata` + remoção (`DefaultEVariationMerger.java:36-42`). O `walkAndMerge` é uma noção **mais frouxa** que `__eq__` (casa por nome de campo e desce recursivo), e `homogeneousArraysMerge` reconcilia array vazio com não-vazio e concilia lower/upper bounds (`:120-140`).
+  - [x] ⚠️ **M5 — `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios** (`:132`). O comentário do autor assume que isso não ocorre; falso quando outro campo do mesmo par reconcilia primeiro (cheio x vazio) e o walk alcança um segundo campo vazio nos dois lados. Confirmado por execução real do Java (JDK 11, fontes do commit pinado). Replicado fielmente (`IndexError`), travado por teste (`test_merge_ambos_vazios_estoura_index_error`). Ver `bugs_originais.md` M5.
 
-### 1.3b — Nível EMF/PyEcore (pré-requisito de 1.4)
+### 1.3b — Nível EMF/PyEcore (pré-requisito de 1.4) ✅
 
-- [ ] `FeatureAnalyzer` + `Default*` — **é quem realmente marca `optional`**. Reusa `compare_feature` da 0.3 (`DefaultFeatureAnalyzer.java:8,13,17`): calcula os comuns a **todas** as variações e marca opcional o resto (`:21-40`, o `setOptional` na `:39`).
-- [ ] `ReferenceMatcherCreator` + `ReferenceMatcher` + `Default*` — só entidades **root** são referenciáveis; cada uma indexada por `{name, pluralize(name), singularize(name)}` (`DefaultReferenceMatcherCreator.java:22,26-27`). É o único uso de `pluralize` no pipeline (confirmado na 0.6).
-- [ ] `StructuralVariationSorter` + `Default*` + `Null*` — cascata: se algum `firstTimestamp != 0` → ordena por ele; senão `lastTimestamp`; senão `count`; senão nº de propriedades (`DefaultStructuralVariationSorter.java:16-24`). **Dois defeitos verificados, a catalogar em `bugs_originais.md`:**
-  - [ ] **`sortByCount` não ordena** — o `ECollections.sort` está **comentado** (`:40`); só renumera `variationId`. Ou seja, com contagem e sem timestamp, a ordem é a de inserção.
-  - [ ] **Comparadores devolvem `-1`/`1`, nunca `0`** (`:28,34,46`) — não são ordem total; para elementos iguais afirmam `>`. Determinismo é load-bearing: replicar com `functools.cmp_to_key` e **fixar a ordem resultante em teste**.
-- [ ] `OptionalTagger` + `Default*` + `Null*` — ⚠️ **é código morto no pipeline.** Só `put()` é chamado (`USchemaModelBuilder:127`); `calcOptionality()` (`:134`) e `isOptional()` (`:187`) estão **comentados** no original ("TODO: Remove until recode"). Portar pelo "fiel e completo" (como o `camelCase`/`underscore` do Inflector na 0.6), mas **registrar que não produz saída** — e não gastar teste de equivalência nele.
-  - [ ] ⚠️ **Corrigir o mapa de `fase1_nucleo_inferencia.md` §1.6:** o `OptionalTest` valida o **`FeatureAnalyzer`**, não o `OptionalTagger`.
+- [x] `FeatureAnalyzer` + `Default*` — **é quem realmente marca `optional`**. Reusa `compare_feature` da 0.3 (`DefaultFeatureAnalyzer.java:8,13,17`): calcula os comuns a **todas** as variações e marca opcional o resto (`:21-40`, o `setOptional` na `:39`). Portado como `set_optional_properties` (função, sem estado real).
+- [x] `ReferenceMatcherCreator` + `ReferenceMatcher` + `Default*` — só entidades **root** são referenciáveis; cada uma indexada por `{name, pluralize(name), singularize(name)}` (`DefaultReferenceMatcherCreator.java:22,26-27`). É o único uso de `pluralize` no pipeline (confirmado na 0.6). Portado como `ReferenceMatcher` (classe — regex compilados são estado real) + `create_reference_matcher`; `dict.fromkeys` no lugar do `HashSet<String>` das 3 variantes (mesmo raciocínio do `findFirst` do Joiner, 1.3a — determinismo entre processos > fidelidade literal a um `HashSet`).
+  - [x] ⚠️ **M6 — chave concatenada crua no regex, sem escape** (`DefaultReferenceMatcher.java:34-50`). Metacaractere de regex no nome da entidade (`.`, `+`, `(`, …) é interpretado como regex, não literal. Confirmado por execução real do Java (JDK 11, fontes do commit pinado): `"a.b"` casa `"aXb_id"`. Replicado fielmente (sem `re.escape`), travado por teste (`test_reference_matcher_m6_chave_com_metacaractere_regex_vira_wildcard`). Ver `bugs_originais.md` M6.
+- [x] `StructuralVariationSorter` + `Default*` + `Null*` — cascata: se algum `firstTimestamp != 0` → ordena por ele; senão `lastTimestamp`; senão `count`; senão nº de propriedades (`DefaultStructuralVariationSorter.java:16-24`). **Dois defeitos verificados, catalogados em `bugs_originais.md`:**
+  - [x] **M3 — `sortByCount` não ordena** — o `ECollections.sort` está **comentado** (`:40`); só renumera `variationId`. Ou seja, com contagem e sem timestamp, a ordem é a de inserção. Replicado (não corrigido) e travado por teste (`test_sort_m3_ramo_de_count_nao_ordena_so_renumera`).
+  - [x] **M4 — comparadores devolvem `-1`/`1`, nunca `0`** (`:28,34,46`) — não são ordem total; para elementos iguais afirmam `>`. Replicado com `functools.cmp_to_key`; a ordem resultante entre "iguais" é fixada em teste (não a mesma coisa que dizer que é estável/previsível).
+- [x] `OptionalTagger` + `Default*` + `Null*` — ⚠️ **é código morto no pipeline.** Só `put()` é chamado (`USchemaModelBuilder:127`); `calcOptionality()` (`:134`) e `isOptional()` (`:187`) estão **comentados** no original ("TODO: Remove until recode"). Portado pelo "fiel e completo" (como o `camelCase`/`underscore` do Inflector na 0.6) como classe `OptionalTagger` (+ `NullOptionalTagger`), com nota explícita de código morto na docstring — **sem** teste de equivalência com o oráculo, só testes unitários isolando o efeito.
+  - [ ] ⚠️ **Corrigir o mapa de `fase1_nucleo_inferencia.md` §1.6:** o `OptionalTest` valida o **`FeatureAnalyzer`**, não o `OptionalTagger`. (Ainda pendente — fazer junto da 1.6.)
 
-**Saída:** `inference/strategies.py` com as 6 + os `Null*`, cada uma com ≥1 teste isolando seu efeito; `OptionalTest` e `SimplifyAggrTest` portados.
+**Saída:** ✅ `inference/strategies.py` ganhou `set_optional_properties`, `ReferenceMatcher`/`create_reference_matcher`, `sort_structural_variations`/`null_sort_structural_variations`, `OptionalTagger`/`NullOptionalTagger`; `tests/unit/test_strategies_emf.py` (18 casos, `EObject` montados via API reflexiva do PyEcore, mesmo estilo de `test_equivalence.py`). Achados novos catalogados: **M3**, **M4**, **M6**. `OptionalTest`/`SimplifyAggrTest` (JUnit) continuam **adiados pra 1.6** de propósito (cortar na tripla via fixture do oráculo), mesmo padrão da 1.2/1.3a.
+
+> ⚠️ **Achado de ambiente (não é bug do porte):** a partir desta fase, `strategies.py` importa `compare_feature` de `validation/equivalence.py`, que importa `enum.StrEnum` (Python 3.11+). No sandbox de IA usado pra desenvolver (Python 3.10) isso quebra a **coleção** de qualquer teste que toque em `strategies.py` — inclusive os da 1.2/1.3a, que antes rodavam ali. Contornado *só pra rodar a suíte naquele ambiente* com um shim local que injeta `enum.StrEnum` no processo do `pytest` (não é código do repo).
+>
+> **Verificado na máquina do usuário (2026-07-21, Python 3.12, `uv run`):**
+> `mypy .` → `Success: no issues found in 26 source files`; `pytest -q` → `467 passed`
+> (os 100 a mais que no sandbox de IA são `test_equivalence.py`, que só roda
+> com Python 3.11+). Os 23 erros que o `mypy --strict` acusou na primeira
+> rodada eram só falta de `assert isinstance(...)`/anotação explícita nos
+> pontos onde `ObjectSC.entity_name`/`.meta` (`str | None`/`ObjectMetadata |
+> None` na classe) ou o tipo base `SchemaComponent` não davam pro mypy provar
+> o que já era verdade em runtime — sem nenhuma mudança de comportamento
+> (mesmos 367/467 testes, mesmos resultados, antes e depois do ajuste). Não é
+> nem fidelidade nem infidelidade ao Java: o Java não tem esse problema porque
+> `Optional.orElse(...)` já devolve tipo não-nulo garantido — não entra em
+> `bugs_originais.md`.
 
 ---
 
@@ -203,7 +220,7 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
     - [ ] **`RawSchemaGen`** (`main/util/RawSchemaGen.java`) — o teste **não** usa `SchemaInference.infer`; monta a árvore por este construtor separado, que não atribui `entityName`, `meta` nem lê *type marker*, e cujo ramo de array não deduplica. Portar como módulo próprio, sem tentar reaproveitar o `infer`.
     - [ ] ⚠️ Decidir o `<null>` da saída esperada (`"<null>{\"a\": Number } "`): vem de `entityName` nulo impresso pelo Java como `null`; o Python imprimiria `None`. Ou o `schema_string` traduz o nulo, ou o teste portado afirma `<None>` — **registrar a escolha**, é divergência de string literal num teste de regressão.
 - [ ] `CountTimestampTest`, `ObjectIdTest`, `TypesTest`, `SimplifyAggrTest` → 1.2/1.3 (bloco B).
-- [ ] **Testes que codificam bug** (`INVENTARIO.md`): `ObjectIdTest` → **acrescentar** caso com `_id` não-`ObjectId` afirmando que infere sem estourar (#6); `CountTimestampTest` → **acrescentar** caso com array de tamanho variável afirmando contagem correta (#8); **teste novo** de array vazio (#7).
+- [ ] **Testes que codificam bug** (`INVENTARIO.md`): `ObjectIdTest` → **acrescentar** caso com `_id` não-`ObjectId` afirmando que infere sem estourar (#6); `CountTimestampTest` → **acrescentar** caso confirmando que `count`/timestamps da segunda ocorrência somem por completo quando duas variações colapsam (#8, não precisa de array); **teste novo** de array vazio (#7).
 - [ ] ⚠️ **`OptionalTest` está vermelho no baseline do oráculo** (é 1 dos 11 de `oracle/docker_explain.md`) — o `OptionalTestConfig` do teste não liga `FeatureAnalyzer` (é o bug do patch `#1`, nunca corrigido no original). **Sem Guice, o bug some por construção** → no porte ele deve **passar**. Não tomar o vermelho do oráculo como valor esperado.
 - [ ] ⚠️ **`SimplifyAggrTest` não valida o `EVariationMerger`.** `fase1_nucleo_inferencia.md` §1.6 diz "1.2 EVariationMerger" e o `INVENTARIO.md` diz "strategies (1.3)"; **os dois erram**. A simplificação `Aggr{V1,V2,V2,…}` → `Aggr{V1,V2}` é feita pelo **`LinkedHashSet` em `SchemaInference.infer(IAJArray)`** (`:237-242`) — módulo **1.2**. O `SimplifyAggr.json` tem `other_names` de tamanho 1/2/4/6 (array de tamanho variável) → é também dado útil para o **#8**.
 - [ ] Marcar tudo como `@pytest.mark.unit` (bloco B deixa de ser integração ao cortar na tripla).
@@ -235,6 +252,6 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 ## Riscos da fase
 
 - **Determinismo** (ordem de campos, igualdade estrutural, ordem das variações) é *load-bearing* — divergir num quebra a equivalência. O comparador `-1`/`1` do sorter (1.3b) é o ponto mais escorregadio.
-- **`ArraySC.__eq__` ignorando tamanho precisa ser replicado *junto* com a correção do #8** — são duas faces do mesmo ponto: sem a igualdade frouxa o #8 nem dispara.
+- **`ArraySC.__eq__` ignorando tamanho precisa ser replicado *junto* com o #8** (colapso de variações sem `combine_metadata`) — são duas faces do mesmo ponto: sem a igualdade frouxa o #8 nem dispara.
 - **A representação do `ObjectId` na tripla (1.0)** é decisão de contrato entre Fase 1 e Fase 2; errar bloqueia o #6.
 - **Ler o `.java` antes de diagnosticar.** O falso `C8` da 0.3 nasceu de diagnosticar o original lendo o nosso porte. As fontes estão em `~/Documents/GitHub/uschema{,-inference}`, nos commits pinados do `oracle/Dockerfile`.
