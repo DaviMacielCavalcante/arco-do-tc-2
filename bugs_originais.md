@@ -67,7 +67,7 @@ contrário.
 | **M3** | `DefaultStructuralVariationSorter.java:40` | `sortByCount` não ordena (`ECollections.sort` comentado) | **corretude** | replicado (fiel) |
 | **M4** | `DefaultStructuralVariationSorter.java:28,34,46` | comparadores devolvem só `-1`/`1`, nunca `0` — não são ordem total | **corretude** | replicado (fiel) |
 | **M5** | `DefaultEVariationMerger.java:132` | `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios | **crash confirmado (Java e porte)** | replicado (fiel) |
-| **M6** | `DefaultReferenceMatcher.java:34-50` | chave concatenada crua no regex, sem escape — metacaractere vira regex | **corretude/segurança confirmada (Java e porte)** | replicado (fiel) |
+| **M6** | `DefaultReferenceMatcher.java:34-50` | chave concatenada crua no regex, sem escape — metacaractere vira regex | **corretude confirmada (Java e porte)** | replicado (fiel) |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
