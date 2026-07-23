@@ -185,14 +185,15 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 > Ordem verificada em `USchemaModelBuilder.java:89-148`.
 
-- [ ] `build(factory, name, rawEntities)`: cria `USchema` → por entidade cria `EntityType` com `root = any(variação.isRoot)` (`:105`) → por variação cria `StructuralVariation` com `variationId` a partir de **1**, `count`, timestamps (`:117-121`) → `optTagger.put` → `rmCreator.createReferenceMatcher(entities)` (`:137`) → `fillEV` por variação (`:140-141`) → por entidade `varSorter.sort` + `analyzer.setOptionalProperties` (`:144-148`).
-- [ ] `fillEV` (`:176-213`): escalar → `Attribute`; objeto → `Aggregate`; array de objeto → `Aggregate`; campo que casa id → `Reference` via `maybeReference(singularize(key), attr)` (`:194`). Campo chamado **`_id` ganha um `Key`** (`:201-207`).
-- [ ] **Bug #7 por construção** (`:255-256`): o Java materializa `inner = sc.getInners().get(0)` **antes** do `if (sc.size() == 0 || ...)` — estoura em array vazio. Em Python, **não indexar `inners[0]` antes do guarda**. (É o patch `0007` do oráculo; aqui é por construção.) O comentário do próprio autor no `:256` já suspeitava: *"si sc.size() == 0 entonces el inner de antes excepciona"*.
-- [ ] **`mStructuralVariations` é dict com chave de hash estrutural** (`:124,245,273`) — `ObjectSC`/`ArraySC` como chave. Duas variações estruturalmente iguais colidiriam e o `Aggregate` apontaria para a errada. Confirmar que o merge de 1.2/1.3a garante unicidade **antes** de 1.4 rodar, e cobrir com teste.
-- [ ] ⚠️ **`opposite` nunca é setado** — o cálculo inteiro está **comentado** (`:150-172`, "no easy way to infer these"). Então `Reference.opposite` é sempre nulo no oráculo. Não "consertar": o harness da 0.3 compara `opposite` e um porte que o preenchesse divergiria de propósito.
-- [ ] Testes: `RelationshipTypeToEntityTypeTest`, `RemovePMapTest` + **teste novo de array vazio** (#7 — nenhum JUnit cobre; é o `privileges` do northwind, o mesmo dado que originou o falso C8).
+- [x] `build(factory, name, rawEntities)`: cria `USchema` → por entidade cria `EntityType` com `root = any(variação.isRoot)` (`:105`) → por variação cria `StructuralVariation` com `variationId` a partir de **1**, `count`, timestamps (`:117-121`) → `optTagger.put` → `rmCreator.createReferenceMatcher(entities)` (`:137`) → `fillEV` por variação (`:140-141`) → por entidade `varSorter.sort` + `analyzer.setOptionalProperties` (`:144-148`). O `factory` do EMF **sai da assinatura**: na API reflexiva do PyEcore a factory é o próprio `EPackage` (`pkg.getEClassifier(...)()`), passado ao construtor.
+- [x] `fillEV` (`:176-213`): escalar → `Attribute`; objeto → `Aggregate`; array de objeto → `Aggregate`; campo que casa id → `Reference` via `maybeReference(singularize(key), attr)` (`:194`). Campo chamado **`_id` ganha um `Key`** (`:201-207`). O `evName` do Java **fica na assinatura** por fidelidade, sem uso vivo — o único consumidor (`optTagger.isOptional`, `:187`) é código morto, como o resto do `OptionalTagger`.
+- [x] **Bug #7 por construção** (`:255-256`): o Java materializa `inner = sc.getInners().get(0)` **antes** do `if (sc.size() == 0 || ...)` — estoura em array vazio. Em Python, **não indexar `inners[0]` antes do guarda**. (É o patch `0007` do oráculo; aqui é por construção.) O comentário do próprio autor no `:256` já suspeitava: *"si sc.size() == 0 entonces el inner de antes excepciona"*. Travado por `test_feature_from_array_vazio_nao_estoura_bug_7` e `test_build_array_vazio_ponta_a_ponta_nao_estoura`.
+- [x] **`mStructuralVariations` é dict com chave de hash estrutural** (`:124,245,273`) — `ObjectSC`/`ArraySC` como chave, portado assim no builder. **A verificação de que o merge de 1.2/1.3a garante unicidade antes de 1.4 rodar foi movida pra 1.7** — é propriedade da 1.2→1.4 costuradas, não do builder isolado.
+- [x] ⚠️ **`opposite` nunca é setado** — o cálculo inteiro está **comentado** (`:150-172`, "no easy way to infer these"). Então `Reference.opposite` é sempre nulo no oráculo. Não "consertar": o harness da 0.3 compara `opposite` e um porte que o preenchesse divergiria de propósito.
+- [x] ⚠️ **P1 — `EOrderedSet` do PyEcore não tem `.sort()` (achado de plataforma, não bug do Java).** `entity.getVariations()` é uma `EList` no Java, e o `DefaultStructuralVariationSorter` chama `ECollections.sort(...)`, que ordena a **coleção EMF** no lugar. No PyEcore a coleção equivalente é um `EOrderedSet`, que **não expõe `.sort()`** — e o `sort_structural_variations` (1.3b) opera sobre `list`. Ordenar só uma cópia deixaria o `variationId` renumerado certo mas a **ordem da coleção** (o que sai no XMI e o que o harness da 0.3 compara) na de inserção. O builder faz a ponte: `list(...)` → `var_sorter` → `clear()` + `extend(...)` reescrevendo a ordem de volta. Não é fidelidade nem infidelidade ao Java — é diferença de API entre EMF e PyEcore, do mesmo tipo do aviso de `mypy` da 1.3. Travado por `test_build_reordena_a_colecao_emf_nao_so_o_id`.
+- [x] Testes: **`test_builder.py` (31 casos)** — cada método isolado + `build` ponta a ponta, com todo acesso a campo `EObject` exercitado (a rede da fronteira PyEcore: pegou em execução os typos `entitties`/`Attribue`/`upperBouund` e o `referenced.eClass` no lugar de `referenced.type.eClass`, nenhum visível ao `mypy`). Inclui o **teste novo de array vazio** (#7 — nenhum JUnit cobre; é o `privileges` do northwind, o mesmo dado que originou o falso C8). `RelationshipTypeToEntityTypeTest`/`RemovePMapTest` (JUnit) seguem **adiados pra 1.6** (bloco B, cortar na tripla via fixture do oráculo), mesmo padrão da 1.2/1.3.
 
-**Saída:** `inference/builder.py` produzindo `USchema` PyEcore válido, com #7 tratado por construção.
+**Saída:** ✅ `inference/builder.py` produzindo `USchema` PyEcore válido, com #7 tratado por construção; `tests/unit/test_builder.py` (31 casos). Achado novo catalogado: **P1** (`EOrderedSet` sem `.sort()`). `ruff`/`mypy --strict` limpos; suíte inteira verde (501 casos).
 
 ---
 
@@ -202,8 +203,10 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 > ~25 classes de `util/abstractjson/`) existe para abstrair duas libs de JSON; em
 > Python a entrada já é `dict` nativo. Elimina uma família inteira de classes.
 
-- [ ] Confirmar que a única perda semântica real é a distinção de `ObjectId` — e que ela está resolvida em **1.0** (senão o #6/`ObjectIdTest` fica sem chão).
-- [ ] Registrar a remoção em `bugs_originais.md`/`CLAUDE.md` como desvio **estrutural** deliberado (não altera comportamento observável).
+- [x] Confirmar que a única perda semântica real é a distinção de `ObjectId` — e que ela está resolvida em **1.0** (senão o #6/`ObjectIdTest` fica sem chão). **Verificado no fonte** (commit pinado): a decisão de tipo do Bridge é o `IAJIdentify` com 7 predicados (`isObject`/`isArray`/`isBoolean`/`isNumber`/`isNull`/`isTextual`/`isObjectId`), consumidos em `SchemaInference.infer:150-168`. Seis são triviais sobre `dict`/`list` nativo e estão em `triple.py::classify` (mesma ordem, `BOOLEAN` antes de `NUMBER`); só `isObjectId` não sai de graça, e é o `value == "oid"` resolvido na 1.0.
+- [x] Registrar a remoção em `bugs_originais.md`/`CLAUDE.md` como desvio **estrutural** deliberado (não altera comportamento observável). Feito: bullet em `bugs_originais.md` ("O que não é defeito") com a verificação dos 7 predicados, e nota em `CLAUDE.md` ("Project-specific notes") no padrão da nota do Inflector ("não reintroduzir por completude").
+
+**Saída:** ✅ camada `abstractjson` confirmada como removível sem perda semântica (só o `ObjectId`, coberto na 1.0) e a remoção registrada nos dois docs de fidelidade. Nenhum código novo — é desvio estrutural, não porte.
 
 ---
 
@@ -235,8 +238,7 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 - [ ] Rodar o pipeline completo sobre a tripla do **Northwind** e comparar com `resources/mongodb/model_northwind.xmi` pelo `compare()` da 0.3.
 - [ ] **Divergência esperada e desejada:** o oráculo tem o **#8** (deliberadamente sem patch — `oracle/docker_explain.md`), o porte não. As 8 não-fatais em `Orders`/`Purchase_orders` que a 0.5 já registrou são exatamente essa assinatura. **Documentar a diferença como resultado**, não "consertar" para bater.
 - [ ] Repetir com `model.xmi` (mínimo MongoDB) e `model_mintest.xmi`.
-
-**Saída:** pipeline ponta a ponta reproduzindo estruturalmente o oráculo, com as divergências de #6/#7/#8 explicadas uma a uma.
+- [ ] **Unicidade das chaves de `mStructuralVariations`** (movido da 1.4). O builder indexa variações por hash estrutural (`ObjectSC`/`ArraySC` como chave, `builder.py`); duas variações estruturalmente iguais colidiriam e o `Aggregate` apontaria pra errada. A garantia de que isso não ocorre é do merge de 1.2/1.3a rodado **antes** do `build` — propriedade da costura, não do builder isolado. Cobrir com teste de integração aqui (a colisão só é observável no pipeline completo, com entidades reais do Northwind/mintest).
 
 ---
 
