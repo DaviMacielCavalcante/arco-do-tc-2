@@ -197,6 +197,24 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 ---
 
+## 1.4b — `m2m/USchemaToDocumentDb` (achado da 1.6, **não estava no roadmap**)
+
+> ⚠️ **Sub-fase nova, descoberta ao portar os testes da 1.6.** O `INVENTARIO.md`
+> mapeava `RemovePMapTest → 1.1/1.4` e `RelationshipTypeToEntityTypeTest → 1.4`;
+> **os dois estão errados** (inferência pelo nome do teste, sem abrir o `.java` — o
+> mesmo erro circular do falso C8). Ambos testam
+> `es.um.uschema.doc2uschema.m2m.USchemaToDocumentDb.adaptToDocumentDb`, uma
+> transformação **model-to-model** que roda **depois** do `USchemaModelBuilder`, e
+> que o roadmap da Fase 1 **não lista em lugar nenhum**. Corrigido no `INVENTARIO.md`.
+
+- [ ] Portar `USchemaToDocumentDb.adaptToDocumentDb` (`m2m/USchemaToDocumentDb.java`): (1) `relTypeToEntityType` — todo `RelationshipType` vira `EntityType` com prefixo `Ref_`, cuidando de colisão de nome e renumeração de `variationId` (`:78-164`); (2) `removePMap` — cada `Attribute` de tipo `PMap` é extraído para uma entidade `Map_<Attr>` com features `key`/`value`, recursivo em `PMap` aninhado (`:166-220`).
+- [ ] Portar `RemovePMapTest` (3 casos: simples, duas variações, recursivo) e `RelationshipTypeToEntityTypeTest` (4 casos) contra o módulo portado.
+- [ ] **Decidir escopo/prioridade:** no fluxo Mongo→U-Schema que a Fase 1 porta, `RelationshipType` só nasce no paradigma-grafo (Neo4j) e `PMap` só se um extrator o gerar — então `adaptToDocumentDb` sobre a saída do nosso builder é quase no-op. Confirmar se entra na Fase 1 ou vira trabalho da Fase 2/3 (paradigma-grafo).
+
+**Saída:** (pendente) `USchemaToDocumentDb` portado + `RemovePMapTest`/`RelationshipTypeToEntityTypeTest` verdes, OU decisão registrada de adiar para a fase do paradigma-grafo.
+
+---
+
 ## 1.5 — `abstractjson` → JSON nativo (camada que **desaparece**)
 
 > Não é tarefa de porte: é uma **remoção**. O Bridge Jackson/Gson (`IAJAdapter` e as
@@ -217,18 +235,21 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 - [ ] **Gerar as fixtures do bloco B pelo oráculo** (`CountTimestamp.json`, `ObjectIds.json`, `Types.json`, `SimplifyAggr.json` → tripla). A 0.5 está pronta e testada → **desbloqueado**. Gerar pelo oráculo é mais fiel que reconstruir à mão.
   - [ ] ⚠️ **Escolher o caminho de extração por fixture, não um só para todas** (achado da 1.0). Os dois caminhos produzem triplas **diferentes** para o mesmo dado: o Spark emite `ObjectId` como `{"$oid": …}` (vira agregado) e não colapsa array homogêneo; o map-reduce emite `"oid"` (vira `ObjectIdSC`) e colapsa. O `ObjectIdTest` **exige** o map-reduce `v1` (`ObjectIdTest.java:56`) — com fixture do Spark ele falha por motivo errado. O `SimplifyAggrTest`, que afirma sobre o colapso `Aggr{V1,V2,V2…}` → `Aggr{V1,V2}`, idem. Registrar em cada fixture qual caminho a gerou.
-- [ ] `J2SchemaSimpleTests` → 1.1 · `OptionalTest` → 1.3b · `RemovePMapTest` → 1.1/1.4 · `RelationshipTypeToEntityTypeTest` → 1.4.
+- [x] `OptionalTest` → 1.3b **(portado, `tests/regression/test_optional.py`)** · ⚠️ `RemovePMapTest`/`RelationshipTypeToEntityTypeTest` → **movidos pra 1.4b** (testam `m2m.USchemaToDocumentDb`, não o builder — ver INVENTARIO) · `J2SchemaSimpleTests` → 1.1 (pendente, precisa de `SchemaPrinter`+`RawSchemaGen`).
   - [ ] ⚠️ **O `J2SchemaSimpleTests` arrasta dois módulos que a 1.1 não portou** (verificado no fonte, decisão movida da 1.1 para cá):
     - [ ] **`SchemaPrinter`** (`intermediate/raw/util/SchemaPrinter.java`) — no pipeline é código morto (só roda sob `DEBUG_TYPE.DEBUG`, constante em `NO_DEBUG`, `SchemaInference:61,142`), mas o teste afirma sobre a saída de `schemaString` em três casos. Portar **junto com o teste**, não antes: é o único consumidor.
     - [ ] **`RawSchemaGen`** (`main/util/RawSchemaGen.java`) — o teste **não** usa `SchemaInference.infer`; monta a árvore por este construtor separado, que não atribui `entityName`, `meta` nem lê *type marker*, e cujo ramo de array não deduplica. Portar como módulo próprio, sem tentar reaproveitar o `infer`.
     - [ ] ⚠️ Decidir o `<null>` da saída esperada (`"<null>{\"a\": Number } "`): vem de `entityName` nulo impresso pelo Java como `null`; o Python imprimiria `None`. Ou o `schema_string` traduz o nulo, ou o teste portado afirma `<None>` — **registrar a escolha**, é divergência de string literal num teste de regressão.
 - [ ] `CountTimestampTest`, `ObjectIdTest`, `TypesTest`, `SimplifyAggrTest` → 1.2/1.3 (bloco B).
-- [ ] **Testes que codificam bug** (`INVENTARIO.md`): `ObjectIdTest` → **acrescentar** caso com `_id` não-`ObjectId` afirmando que infere sem estourar (#6); `CountTimestampTest` → **acrescentar** caso confirmando que `count`/timestamps da segunda ocorrência somem por completo quando duas variações colapsam (#8, não precisa de array); **teste novo** de array vazio (#7).
-- [ ] ⚠️ **`OptionalTest` está vermelho no baseline do oráculo** (é 1 dos 11 de `oracle/docker_explain.md`) — o `OptionalTestConfig` do teste não liga `FeatureAnalyzer` (é o bug do patch `#1`, nunca corrigido no original). **Sem Guice, o bug some por construção** → no porte ele deve **passar**. Não tomar o vermelho do oráculo como valor esperado.
+  - [x] **`TypesTest`** (`tests/regression/test_types.py`) — asserção é count-independente (nenhum `_type` vaza), fixture reconstruída à mão do `Types.json` + `_type` do map-reduce v1 (raiz **e** aninhado). Seguro sem oráculo.
+  - [x] **`ObjectIdTest`** (`tests/regression/test_objectid.py`) — asserção é de **tipo** (`_id` → `PrimitiveType "ObjectId"`), count-independente, fixture com a sentinela v1 `"oid"`. Inclui o caso #6 (abaixo).
+  - [ ] **`CountTimestampTest`, `SimplifyAggrTest`** — asserção **é a contagem** (variações/counts), depende da agregação exata do map-reduce → **exigem fixture gerada pelo oráculo** (Docker). Não reconstruir à mão: passaria por motivo errado.
+- [ ] **Testes que codificam bug** (`INVENTARIO.md`): ~~`ObjectIdTest` → acrescentar caso com `_id` não-`ObjectId` (#6)~~ **feito** (`test_id_nao_objectid_infere_sem_estourar`); ~~array vazio (#7)~~ **feito na 1.4** (`test_feature_from_array_vazio_...`); `CountTimestampTest` → **acrescentar** caso do #8 (count da 2ª ocorrência some no colapso) — pendente, junto da fixture do oráculo. (O #8 já tem cobertura em `test_schema_inference.py`.)
+- [x] ⚠️ **`OptionalTest` está vermelho no baseline do oráculo** — o `OptionalTestConfig` não liga `FeatureAnalyzer` (bug do patch `#1`). **Sem Guice, o bug some por construção** → no porte **passa**. Afirmado o valor corrigido em `test_optional.py` (docstring registra a divergência).
 - [ ] ⚠️ **`SimplifyAggrTest` não valida o `EVariationMerger`.** `fase1_nucleo_inferencia.md` §1.6 diz "1.2 EVariationMerger" e o `INVENTARIO.md` diz "strategies (1.3)"; **os dois erram**. A simplificação `Aggr{V1,V2,V2,…}` → `Aggr{V1,V2}` é feita pelo **`LinkedHashSet` em `SchemaInference.infer(IAJArray)`** (`:237-242`) — módulo **1.2**. O `SimplifyAggr.json` tem `other_names` de tamanho 1/2/4/6 (array de tamanho variável) → é também dado útil para o **#8**.
-- [ ] Marcar tudo como `@pytest.mark.unit` (bloco B deixa de ser integração ao cortar na tripla).
+- [x] Marcar tudo como `@pytest.mark.unit` (bloco B deixa de ser integração ao cortar na tripla) — feito nos três portados.
 
-**Saída:** suíte de regressão portada e verde, com os valores **corrigidos** onde houve bug.
+**Saída (parcial):** ✅ portados e verdes: `OptionalTest` (3 casos), `TypesTest` (2), `ObjectIdTest` (2, inclui #6) — `tests/regression/`. **Pendentes, com pré-requisito:** `CountTimestamp`/`SimplifyAggr` (fixture do oráculo Docker); `J2SchemaSimpleTests` (portar `SchemaPrinter`+`RawSchemaGen`); `RemovePMap`/`RelationshipType` (1.4b — `USchemaToDocumentDb`).
 
 ---
 
