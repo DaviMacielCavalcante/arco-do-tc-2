@@ -25,9 +25,9 @@ Mapeamento teste → módulo do porte:
 |---|---|---|---|
 | `InflectorTest` | `naming.inflector` (0.6) | capitalização/pluralização | não — **desbloqueado hoje** |
 | `J2SchemaSimpleTests` | `intermediate.raw` (1.1) | JSON → schema cru | não |
-| `OptionalTest` | `inference.strategies` (1.3) | opcionalidade entre variações | não |
-| `RemovePMapTest` | `intermediate.raw` / builder | remoção de PMap | não |
-| `RelationshipTypeToEntityTypeTest` | `inference.builder` (1.4) | referência × relacionamento | não |
+| `OptionalTest` | `inference.strategies` (1.3b) + pipeline | opcionalidade entre variações | não — **portado** |
+| `RemovePMapTest` | ⚠️ `m2m.USchemaToDocumentDb` (1.4b) | remoção de PMap | não — **não é o builder** (ver `INVENTARIO.md`) |
+| `RelationshipTypeToEntityTypeTest` | ⚠️ `m2m.USchemaToDocumentDb` (1.4b) | RelationshipType → EntityType | não — **não é o builder** (ver `INVENTARIO.md`) |
 | `SimplificationTest`, `PairOperationsTest` | `extractors.mongo` (2.1) | simplificação e operações de par | não |
 | `CountTimestampTest` | `inference.schema_inference` (1.2) | count/timestamp por variação (**#8**) | sim → cortar na tripla |
 | `ObjectIdTest` | tipos (1.2) | distinguir ObjectId de String (**#6**) | sim → cortar na tripla |

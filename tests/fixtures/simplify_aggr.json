@@ -1,0 +1,115 @@
+[
+  {
+    "count": 1,
+    "firstTimestamp": 0,
+    "lastTimestamp": 0,
+    "schema": {
+      "_id": "oid",
+      "_type": "Persons",
+      "id": "string",
+      "name": "string",
+      "other_names": [
+        {
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        }
+      ]
+    }
+  },
+  {
+    "count": 1,
+    "firstTimestamp": 0,
+    "lastTimestamp": 0,
+    "schema": {
+      "_id": "oid",
+      "_type": "Persons",
+      "id": "string",
+      "name": "string",
+      "other_names": [
+        {
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        }
+      ]
+    }
+  },
+  {
+    "count": 1,
+    "firstTimestamp": 0,
+    "lastTimestamp": 0,
+    "schema": {
+      "_id": "oid",
+      "_type": "Persons",
+      "id": "string",
+      "name": "string",
+      "other_names": [
+        {
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        },
+        {
+          "lang": "string",
+          "name": "string",
+          "note": "string"
+        }
+      ]
+    }
+  },
+  {
+    "count": 1,
+    "firstTimestamp": 0,
+    "lastTimestamp": 0,
+    "schema": {
+      "_id": "oid",
+      "_type": "Persons",
+      "id": "string",
+      "name": "string",
+      "other_names": [
+        {
+          "name": "string",
+          "note": "string"
+        }
+      ]
+    }
+  }
+]

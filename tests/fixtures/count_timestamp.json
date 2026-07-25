@@ -1,0 +1,54 @@
+[
+  {
+    "count": 8,
+    "firstTimestamp": 0,
+    "lastTimestamp": 0,
+    "schema": {
+      "_id": "oid",
+      "_type": "Areas",
+      "id": "string",
+      "name": "string",
+      "type": "string"
+    }
+  },
+  {
+    "count": 3,
+    "firstTimestamp": 0,
+    "lastTimestamp": 0,
+    "schema": {
+      "_id": "oid",
+      "_type": "Areas",
+      "id": "string",
+      "name": "string"
+    }
+  },
+  {
+    "count": 1,
+    "firstTimestamp": 0,
+    "lastTimestamp": 0,
+    "schema": {
+      "_id": "oid",
+      "_type": "Container",
+      "aggr": {
+        "attr1": "string",
+        "attr2": "string"
+      },
+      "id": "string"
+    }
+  },
+  {
+    "count": 1,
+    "firstTimestamp": 0,
+    "lastTimestamp": 0,
+    "schema": {
+      "_id": "oid",
+      "_type": "Container",
+      "aggr": {
+        "attr1": "string",
+        "attr2": "string"
+      },
+      "id": "string",
+      "name": "string"
+    }
+  }
+]

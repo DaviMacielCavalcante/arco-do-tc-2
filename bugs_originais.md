@@ -1006,6 +1006,21 @@ Registrado para evitar que uma leitura futura os "corrija":
   variationId, count nor timestamp."* É a definição de equivalência
   **estrutural** adotada pelo projeto.
 - **`ArraySC.equals` ignora o tamanho do array.** Ver #8: é load-bearing.
+- **O `abstractjson` (Bridge Jackson/Gson, ~25 classes) não foi portado — é
+  remoção deliberada, não porte incompleto** (Fase 1.5). O Bridge existe só para
+  abstrair *duas* libs de JSON do Java; em Python a entrada já é `dict`/`list`
+  nativo, então não há nada a abstrair. **Verificado que a remoção não perde
+  semântica:** toda a decisão de tipo do Bridge está no `IAJIdentify`, com 7
+  predicados (`isObject`/`isArray`/`isBoolean`/`isNumber`/`isNull`/`isTextual`/
+  `isObjectId`), consumidos por `SchemaInference.infer:150-168`. Seis são
+  triviais sobre `dict`/`list` nativo e estão reproduzidos 1-a-1 em
+  `extractors/triple.py::classify` (mesma ordem do Java, `BOOLEAN` antes de
+  `NUMBER` por causa do `bool`⊂`int`). O sétimo — `isObjectId` — é o **único**
+  que o JSON nativo não distingue sozinho, e está resolvido na Fase 1.0: é o
+  predicado `value == "oid"` (`JacksonElement:93`/`GsonElement:120`), a sentinela
+  do map-reduce. Logo a remoção não altera comportamento observável. Não
+  reintroduzir o Bridge "por completude" — ver a nota análoga do Inflector no
+  `CLAUDE.md`.
 
 ---
 

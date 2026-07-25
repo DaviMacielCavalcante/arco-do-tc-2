@@ -136,7 +136,7 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 ---
 
-## 1.3 — As estratégias (Guice → wiring por construtor)
+## 1.3 — As estratégias (Guice → wiring por construtor) ✅
 
 > ⚠️ **Contradiz `fase1_nucleo_inferencia.md` §1.3**, que trata as 6 como uma camada
 > só. **Elas se dividem em dois grupos por dependência**, e o grupo decide *quando*
@@ -145,10 +145,10 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 > desaparece: instanciar e passar por construtor (o Java já tem construtor além do `@Inject` —
 > `SchemaInference:70`, `USchemaModelBuilder:74`).
 
-### 1.3a — Nível raw (pré-requisito de 1.2)
+### 1.3a — Nível raw (pré-requisito de 1.2) ✅
 
-- [ ] `AliasedAggregatedEntityJoiner` + `Default*` — une entidades-alias via as 10 `AggregateHintWords` (`has`, `with`, `set`, `list`, …), testando `hint+entity` e `entity+hint` com `equalsIgnoreCase` (`DefaultAliasedAggregatedEntityJoiner.java:13-14,21-24`). O `findFirst` (`:26`) tem comentário do autor (`:24`) admitindo que ignorar os demais casamentos "could lead us to some bad-named entities" — **manter**.
-- [ ] `EVariationMerger` + `Default*` — laço `do/while` até estabilizar; ao fundir, `updateReferences` + `combineMetadata` + remoção (`DefaultEVariationMerger.java:36-42`). O `walkAndMerge` é uma noção **mais frouxa** que `__eq__` (casa por nome de campo e desce recursivo), e `homogeneousArraysMerge` reconcilia array vazio com não-vazio e concilia lower/upper bounds (`:120-140`).
+- [x] `AliasedAggregatedEntityJoiner` + `Default*` — une entidades-alias via as 10 `AggregateHintWords` (`has`, `with`, `set`, `list`, …), testando `hint+entity` e `entity+hint` com `equalsIgnoreCase` (`DefaultAliasedAggregatedEntityJoiner.java:13-14,21-24`). O `findFirst` (`:26`) tem comentário do autor (`:24`) admitindo que ignorar os demais casamentos "could lead us to some bad-named entities" — **manter**. Portado como `join_aggregated_entities`; testes em `test_strategies.py` (prefixo/sufixo de hint, case-insensitive, renomeio, `findFirst` pega a 1ª do dict).
+- [x] `EVariationMerger` + `Default*` — laço `do/while` até estabilizar; ao fundir, `updateReferences` + `combineMetadata` + remoção (`DefaultEVariationMerger.java:36-42`). O `walkAndMerge` é uma noção **mais frouxa** que `__eq__` (casa por nome de campo e desce recursivo), e `homogeneousArraysMerge` reconcilia array vazio com não-vazio e concilia lower/upper bounds (`:120-140`). Portado como `merge_equivalent_evs`; testes em `test_strategies.py` (funde por forma ignorando `entity_name`, combina metadata no sobrevivente).
   - [x] ⚠️ **M5 — `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios** (`:132`). O comentário do autor assume que isso não ocorre; falso quando outro campo do mesmo par reconcilia primeiro (cheio x vazio) e o walk alcança um segundo campo vazio nos dois lados. Confirmado por execução real do Java (JDK 11, fontes do commit pinado). Replicado fielmente (`IndexError`), travado por teste (`test_merge_ambos_vazios_estoura_index_error`). Ver `bugs_originais.md` M5.
 
 ### 1.3b — Nível EMF/PyEcore (pré-requisito de 1.4) ✅
@@ -160,9 +160,9 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
   - [x] **M3 — `sortByCount` não ordena** — o `ECollections.sort` está **comentado** (`:40`); só renumera `variationId`. Ou seja, com contagem e sem timestamp, a ordem é a de inserção. Replicado (não corrigido) e travado por teste (`test_sort_m3_ramo_de_count_nao_ordena_so_renumera`).
   - [x] **M4 — comparadores devolvem `-1`/`1`, nunca `0`** (`:28,34,46`) — não são ordem total; para elementos iguais afirmam `>`. Replicado com `functools.cmp_to_key`; a ordem resultante entre "iguais" é fixada em teste (não a mesma coisa que dizer que é estável/previsível).
 - [x] `OptionalTagger` + `Default*` + `Null*` — ⚠️ **é código morto no pipeline.** Só `put()` é chamado (`USchemaModelBuilder:127`); `calcOptionality()` (`:134`) e `isOptional()` (`:187`) estão **comentados** no original ("TODO: Remove until recode"). Portado pelo "fiel e completo" (como o `camelCase`/`underscore` do Inflector na 0.6) como classe `OptionalTagger` (+ `NullOptionalTagger`), com nota explícita de código morto na docstring — **sem** teste de equivalência com o oráculo, só testes unitários isolando o efeito.
-  - [ ] ⚠️ **Corrigir o mapa de `fase1_nucleo_inferencia.md` §1.6:** o `OptionalTest` valida o **`FeatureAnalyzer`**, não o `OptionalTagger`. (Ainda pendente — fazer junto da 1.6.)
+  - [x] ⚠️ **Corrigir o mapa de `fase1_nucleo_inferencia.md` §1.6:** o `OptionalTest` valida o **`FeatureAnalyzer`**, não o `OptionalTagger`. **Feito** (junto da 1.6) — corrigido também o `SimplifyAggrTest` (é o `LinkedHashSet` da 1.2, não o `EVariationMerger`).
 
-**Saída:** ✅ `inference/strategies.py` ganhou `set_optional_properties`, `ReferenceMatcher`/`create_reference_matcher`, `sort_structural_variations`/`null_sort_structural_variations`, `OptionalTagger`/`NullOptionalTagger`; `tests/unit/test_strategies_emf.py` (18 casos, `EObject` montados via API reflexiva do PyEcore, mesmo estilo de `test_equivalence.py`). Achados novos catalogados: **M3**, **M4**, **M6**. `OptionalTest`/`SimplifyAggrTest` (JUnit) continuam **adiados pra 1.6** de propósito (cortar na tripla via fixture do oráculo), mesmo padrão da 1.2/1.3a.
+**Saída:** ✅ `inference/strategies.py` ganhou `set_optional_properties`, `ReferenceMatcher`/`create_reference_matcher`, `sort_structural_variations`/`null_sort_structural_variations`, `OptionalTagger`/`NullOptionalTagger`; `tests/unit/test_strategies_emf.py` (18 casos, `EObject` montados via API reflexiva do PyEcore, mesmo estilo de `test_equivalence.py`). Achados novos catalogados: **M3**, **M4**, **M6**. `OptionalTest`/`SimplifyAggrTest` (JUnit) foram para a **1.6** (cortar na tripla via fixture do oráculo, mesmo padrão da 1.2/1.3a) — **já portados e verdes** (`tests/regression/`).
 
 > ⚠️ **Achado de ambiente (não é bug do porte):** a partir desta fase, `strategies.py` importa `compare_feature` de `validation/equivalence.py`, que importa `enum.StrEnum` (Python 3.11+). No sandbox de IA usado pra desenvolver (Python 3.10) isso quebra a **coleção** de qualquer teste que toque em `strategies.py` — inclusive os da 1.2/1.3a, que antes rodavam ali. Contornado *só pra rodar a suíte naquele ambiente* com um shim local que injeta `enum.StrEnum` no processo do `pytest` (não é código do repo).
 >
@@ -181,71 +181,103 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 ---
 
-## 1.4 — `USchemaModelBuilder.build` + `fillEV`
+## 1.4 — `USchemaModelBuilder.build` + `fillEV` ✅
 
 > Ordem verificada em `USchemaModelBuilder.java:89-148`.
 
-- [ ] `build(factory, name, rawEntities)`: cria `USchema` → por entidade cria `EntityType` com `root = any(variação.isRoot)` (`:105`) → por variação cria `StructuralVariation` com `variationId` a partir de **1**, `count`, timestamps (`:117-121`) → `optTagger.put` → `rmCreator.createReferenceMatcher(entities)` (`:137`) → `fillEV` por variação (`:140-141`) → por entidade `varSorter.sort` + `analyzer.setOptionalProperties` (`:144-148`).
-- [ ] `fillEV` (`:176-213`): escalar → `Attribute`; objeto → `Aggregate`; array de objeto → `Aggregate`; campo que casa id → `Reference` via `maybeReference(singularize(key), attr)` (`:194`). Campo chamado **`_id` ganha um `Key`** (`:201-207`).
-- [ ] **Bug #7 por construção** (`:255-256`): o Java materializa `inner = sc.getInners().get(0)` **antes** do `if (sc.size() == 0 || ...)` — estoura em array vazio. Em Python, **não indexar `inners[0]` antes do guarda**. (É o patch `0007` do oráculo; aqui é por construção.) O comentário do próprio autor no `:256` já suspeitava: *"si sc.size() == 0 entonces el inner de antes excepciona"*.
-- [ ] **`mStructuralVariations` é dict com chave de hash estrutural** (`:124,245,273`) — `ObjectSC`/`ArraySC` como chave. Duas variações estruturalmente iguais colidiriam e o `Aggregate` apontaria para a errada. Confirmar que o merge de 1.2/1.3a garante unicidade **antes** de 1.4 rodar, e cobrir com teste.
-- [ ] ⚠️ **`opposite` nunca é setado** — o cálculo inteiro está **comentado** (`:150-172`, "no easy way to infer these"). Então `Reference.opposite` é sempre nulo no oráculo. Não "consertar": o harness da 0.3 compara `opposite` e um porte que o preenchesse divergiria de propósito.
-- [ ] Testes: `RelationshipTypeToEntityTypeTest`, `RemovePMapTest` + **teste novo de array vazio** (#7 — nenhum JUnit cobre; é o `privileges` do northwind, o mesmo dado que originou o falso C8).
+- [x] `build(factory, name, rawEntities)`: cria `USchema` → por entidade cria `EntityType` com `root = any(variação.isRoot)` (`:105`) → por variação cria `StructuralVariation` com `variationId` a partir de **1**, `count`, timestamps (`:117-121`) → `optTagger.put` → `rmCreator.createReferenceMatcher(entities)` (`:137`) → `fillEV` por variação (`:140-141`) → por entidade `varSorter.sort` + `analyzer.setOptionalProperties` (`:144-148`). O `factory` do EMF **sai da assinatura**: na API reflexiva do PyEcore a factory é o próprio `EPackage` (`pkg.getEClassifier(...)()`), passado ao construtor.
+- [x] `fillEV` (`:176-213`): escalar → `Attribute`; objeto → `Aggregate`; array de objeto → `Aggregate`; campo que casa id → `Reference` via `maybeReference(singularize(key), attr)` (`:194`). Campo chamado **`_id` ganha um `Key`** (`:201-207`). O `evName` do Java **fica na assinatura** por fidelidade, sem uso vivo — o único consumidor (`optTagger.isOptional`, `:187`) é código morto, como o resto do `OptionalTagger`.
+- [x] **Bug #7 por construção** (`:255-256`): o Java materializa `inner = sc.getInners().get(0)` **antes** do `if (sc.size() == 0 || ...)` — estoura em array vazio. Em Python, **não indexar `inners[0]` antes do guarda**. (É o patch `0007` do oráculo; aqui é por construção.) O comentário do próprio autor no `:256` já suspeitava: *"si sc.size() == 0 entonces el inner de antes excepciona"*. Travado por `test_feature_from_array_vazio_nao_estoura_bug_7` e `test_build_array_vazio_ponta_a_ponta_nao_estoura`.
+- [x] **`mStructuralVariations` é dict com chave de hash estrutural** (`:124,245,273`) — `ObjectSC`/`ArraySC` como chave, portado assim no builder. **A verificação de que o merge de 1.2/1.3a garante unicidade antes de 1.4 rodar foi movida pra 1.7** — é propriedade da 1.2→1.4 costuradas, não do builder isolado.
+- [x] ⚠️ **`opposite` nunca é setado** — o cálculo inteiro está **comentado** (`:150-172`, "no easy way to infer these"). Então `Reference.opposite` é sempre nulo no oráculo. Não "consertar": o harness da 0.3 compara `opposite` e um porte que o preenchesse divergiria de propósito.
+- [x] ⚠️ **P1 — `EOrderedSet` do PyEcore não tem `.sort()` (achado de plataforma, não bug do Java).** `entity.getVariations()` é uma `EList` no Java, e o `DefaultStructuralVariationSorter` chama `ECollections.sort(...)`, que ordena a **coleção EMF** no lugar. No PyEcore a coleção equivalente é um `EOrderedSet`, que **não expõe `.sort()`** — e o `sort_structural_variations` (1.3b) opera sobre `list`. Ordenar só uma cópia deixaria o `variationId` renumerado certo mas a **ordem da coleção** (o que sai no XMI e o que o harness da 0.3 compara) na de inserção. O builder faz a ponte: `list(...)` → `var_sorter` → `clear()` + `extend(...)` reescrevendo a ordem de volta. Não é fidelidade nem infidelidade ao Java — é diferença de API entre EMF e PyEcore, do mesmo tipo do aviso de `mypy` da 1.3. Travado por `test_build_reordena_a_colecao_emf_nao_so_o_id`.
+- [x] Testes: **`test_builder.py` (31 casos)** — cada método isolado + `build` ponta a ponta, com todo acesso a campo `EObject` exercitado (a rede da fronteira PyEcore: pegou em execução os typos `entitties`/`Attribue`/`upperBouund` e o `referenced.eClass` no lugar de `referenced.type.eClass`, nenhum visível ao `mypy`). Inclui o **teste novo de array vazio** (#7 — nenhum JUnit cobre; é o `privileges` do northwind, o mesmo dado que originou o falso C8). `RelationshipTypeToEntityTypeTest`/`RemovePMapTest` (JUnit) seguem **adiados pra 1.6** (bloco B, cortar na tripla via fixture do oráculo), mesmo padrão da 1.2/1.3.
 
-**Saída:** `inference/builder.py` produzindo `USchema` PyEcore válido, com #7 tratado por construção.
+**Saída:** ✅ `inference/builder.py` produzindo `USchema` PyEcore válido, com #7 tratado por construção; `tests/unit/test_builder.py` (31 casos). Achado novo catalogado: **P1** (`EOrderedSet` sem `.sort()`). `ruff`/`mypy --strict` limpos; suíte inteira verde (501 casos).
 
 ---
 
-## 1.5 — `abstractjson` → JSON nativo (camada que **desaparece**)
+## 1.4b — `m2m/USchemaToDocumentDb` (achado da 1.6, **não estava no roadmap**)
+
+> ⚠️ **Sub-fase nova, descoberta ao portar os testes da 1.6.** O `INVENTARIO.md`
+> mapeava `RemovePMapTest → 1.1/1.4` e `RelationshipTypeToEntityTypeTest → 1.4`;
+> **os dois estão errados** (inferência pelo nome do teste, sem abrir o `.java` — o
+> mesmo erro circular do falso C8). Ambos testam
+> `es.um.uschema.doc2uschema.m2m.USchemaToDocumentDb.adaptToDocumentDb`, uma
+> transformação **model-to-model** que roda **depois** do `USchemaModelBuilder`, e
+> que o roadmap da Fase 1 **não lista em lugar nenhum**. Corrigido no `INVENTARIO.md`.
+
+- [x] Portar `USchemaToDocumentDb.adaptToDocumentDb` (`m2m/USchemaToDocumentDb.java`) — `inference/m2m.py`, os quatro métodos:
+  - [x] **`adapt_to_document_db`** (`:49-69`) — coleta todos os `RelationshipType` e `Attribute` de `PMap` (as duas coleções via `itertools.chain`), depois aplica relTypes **antes** dos maps. Coleta-antes-de-transformar é load-bearing.
+  - [x] **`_rel_type_to_entity_type`** (`:78-155`) — `RelationshipType` → `EntityType` com prefixo `Ref_`. Monta `l_references` (as `Reference` decoradas por este rel via `isFeaturedBy`, casadas por **identidade**), embute os atributos da aresta na variação de origem (com `_deep_copy` + `_id` sintético `ObjectId`), reaponta as refs e move as variações — CASO A (entidade nova, leva tudo) vs CASO B (colisão de nome: dedup por `compare_variation` + renumeração contínua).
+  - [x] **`_remove_pmap`** (`:166-220`) — `_remove_pmap`. Find-or-create em dois níveis (entidade `Map_<Attr>` por **nome**, variação `{key,value}` por **estrutura** via `compare_variation`), troca do `PMap` por `Aggregate` no container (`eContainer()`), e recursão em `PMap` de `PMap`.
+  - [x] **`_deep_copy`** — substitui o `EcoreUtil.copy` (`:104`), inexistente no PyEcore (`EcoreUtils.copy` não existe; `copy.deepcopy` estoura `BadValueError`). **Cópia genérica**, percorrendo as `eAllStructuralFeatures()` do metamodelo — sem ramo por tipo, igual ao que o `EcoreUtil.copy` faz por dentro. Três regras: `EAttribute` → copia o valor; `EReference` de containment → copia recursivo; `EReference` **não**-containment → pula.
+    - [x] ⚠️ **Por que pular não-containment:** essas features têm `eOpposite`, então atribuí-las na cópia **muta o original** — `copia.key = orig.key` insere a cópia em `Key.attributes` do `Key` original (verificado: lista vai de 1 para 2). O Java evita o mesmo com o `Copier`, que remapeia refs internas à árvore copiada e deixa as externas de fora.
+    - [x] ~~**DÉBITO TÉCNICO** — cobria só `PrimitiveType`, composto estourava `AttributeError`~~ **PAGO.** A primeira versão hardcodava o tipo; a versão genérica cobre `PrimitiveType`, `PList`/`PSet`, `PMap` (inclusive aninhado) e `PTuple`, validado caso a caso. O porte deixou de estar menos completo que o original neste ponto.
+- [x] Portar `RemovePMapTest` (3 casos) e `RelationshipTypeToEntityTypeTest` (4 casos) — versionados em `tests/regression/test_remove_pmap.py` e `test_relationship_type_to_entity_type.py`, todos verdes. Os `USchema` de entrada são montados na própria classe de teste (como o JUnit), sem Mongo nem inferência.
+- [x] **Escopo/prioridade decidido:** a 1.4b foi portada **agora**, junto da 1.6, em vez de adiada. O módulo roda ponta a ponta (`adapt_to_document_db` sobre schema com `RelationshipType` + `PMap` juntos → `Ref_`/`Map_` + `relationships` vazio), mesmo que no fluxo Mongo→U-Schema atual ele seja quase no-op — fica pronto pro paradigma-grafo (Fase 2/3) sem retrabalho.
+
+**Saída:** ✅ `inference/m2m.py` completo (4 métodos), `tests/regression/` com os 2 JUnit portados (7 casos). `ruff`/`mypy --strict` limpos; suíte inteira verde (515). Achado que originou a sub-fase (`INVENTARIO` mapeava os 2 testes no builder) registrado em `INVENTARIO.md`/`README.md`.
+
+---
+
+## 1.5 — `abstractjson` → JSON nativo (camada que **desaparece**) ✅
 
 > Não é tarefa de porte: é uma **remoção**. O Bridge Jackson/Gson (`IAJAdapter` e as
 > ~25 classes de `util/abstractjson/`) existe para abstrair duas libs de JSON; em
 > Python a entrada já é `dict` nativo. Elimina uma família inteira de classes.
 
-- [ ] Confirmar que a única perda semântica real é a distinção de `ObjectId` — e que ela está resolvida em **1.0** (senão o #6/`ObjectIdTest` fica sem chão).
-- [ ] Registrar a remoção em `bugs_originais.md`/`CLAUDE.md` como desvio **estrutural** deliberado (não altera comportamento observável).
+- [x] Confirmar que a única perda semântica real é a distinção de `ObjectId` — e que ela está resolvida em **1.0** (senão o #6/`ObjectIdTest` fica sem chão). **Verificado no fonte** (commit pinado): a decisão de tipo do Bridge é o `IAJIdentify` com 7 predicados (`isObject`/`isArray`/`isBoolean`/`isNumber`/`isNull`/`isTextual`/`isObjectId`), consumidos em `SchemaInference.infer:150-168`. Seis são triviais sobre `dict`/`list` nativo e estão em `triple.py::classify` (mesma ordem, `BOOLEAN` antes de `NUMBER`); só `isObjectId` não sai de graça, e é o `value == "oid"` resolvido na 1.0.
+- [x] Registrar a remoção em `bugs_originais.md`/`CLAUDE.md` como desvio **estrutural** deliberado (não altera comportamento observável). Feito: bullet em `bugs_originais.md` ("O que não é defeito") com a verificação dos 7 predicados, e nota em `CLAUDE.md` ("Project-specific notes") no padrão da nota do Inflector ("não reintroduzir por completude").
+
+**Saída:** ✅ camada `abstractjson` confirmada como removível sem perda semântica (só o `ObjectId`, coberto na 1.0) e a remoção registrada nos dois docs de fidelidade. Nenhum código novo — é desvio estrutural, não porte.
 
 ---
 
-## 1.6 — Testes de regressão portados (critério de aceite por módulo)
+## 1.6 — Testes de regressão portados (critério de aceite por módulo) ✅
 
 > Mapa em `INVENTARIO.md`. Bloco A = puro; bloco B = **cortar na tripla** (fixture
 > congelada em vez de Mongo + map-reduce).
 
-- [ ] **Gerar as fixtures do bloco B pelo oráculo** (`CountTimestamp.json`, `ObjectIds.json`, `Types.json`, `SimplifyAggr.json` → tripla). A 0.5 está pronta e testada → **desbloqueado**. Gerar pelo oráculo é mais fiel que reconstruir à mão.
-  - [ ] ⚠️ **Escolher o caminho de extração por fixture, não um só para todas** (achado da 1.0). Os dois caminhos produzem triplas **diferentes** para o mesmo dado: o Spark emite `ObjectId` como `{"$oid": …}` (vira agregado) e não colapsa array homogêneo; o map-reduce emite `"oid"` (vira `ObjectIdSC`) e colapsa. O `ObjectIdTest` **exige** o map-reduce `v1` (`ObjectIdTest.java:56`) — com fixture do Spark ele falha por motivo errado. O `SimplifyAggrTest`, que afirma sobre o colapso `Aggr{V1,V2,V2…}` → `Aggr{V1,V2}`, idem. Registrar em cada fixture qual caminho a gerou.
-- [ ] `J2SchemaSimpleTests` → 1.1 · `OptionalTest` → 1.3b · `RemovePMapTest` → 1.1/1.4 · `RelationshipTypeToEntityTypeTest` → 1.4.
-  - [ ] ⚠️ **O `J2SchemaSimpleTests` arrasta dois módulos que a 1.1 não portou** (verificado no fonte, decisão movida da 1.1 para cá):
-    - [ ] **`SchemaPrinter`** (`intermediate/raw/util/SchemaPrinter.java`) — no pipeline é código morto (só roda sob `DEBUG_TYPE.DEBUG`, constante em `NO_DEBUG`, `SchemaInference:61,142`), mas o teste afirma sobre a saída de `schemaString` em três casos. Portar **junto com o teste**, não antes: é o único consumidor.
-    - [ ] **`RawSchemaGen`** (`main/util/RawSchemaGen.java`) — o teste **não** usa `SchemaInference.infer`; monta a árvore por este construtor separado, que não atribui `entityName`, `meta` nem lê *type marker*, e cujo ramo de array não deduplica. Portar como módulo próprio, sem tentar reaproveitar o `infer`.
-    - [ ] ⚠️ Decidir o `<null>` da saída esperada (`"<null>{\"a\": Number } "`): vem de `entityName` nulo impresso pelo Java como `null`; o Python imprimiria `None`. Ou o `schema_string` traduz o nulo, ou o teste portado afirma `<None>` — **registrar a escolha**, é divergência de string literal num teste de regressão.
+- [x] **Gerar as fixtures do bloco B** (`CountTimestamp.json`, `SimplifyAggr.json` → tripla). Feito **sem buildar o oráculo Java**: o `mapRed2Array` do Java é um wrapper fino (roda `collection.mapReduce(map, reduce)` por coleção e coleta o `value`), então rodar o **map-reduce v1 direto num Mongo 7.0 descartável via `mongosh`** reproduz a mesma tripla. O `_type` = nome da coleção capitalizado é feito pelo `MongoDBStreamAdapter.java:29` (capitalização simples, não Inflector), replicado no driver. Fixtures em `tests/fixtures/count_timestamp.json`/`simplify_aggr.json` + `tests/fixtures/README.md` (proveniência + reprodução).
+  - [x] ⚠️ **Caminho de extração por fixture** (achado da 1.0): geradas pelo **map-reduce v1** (`ObjectId` → `"oid"`, array homogêneo colapsa), não Spark — registrado em `tests/fixtures/README.md`. **Validação que fecha a dúvida "mongosh == mapRed2Array?":** alimentar a fixture no `infer`+`build` reproduz **exatamente** as asserções do JUnit (ver os testes), então a fixture é fiel por resultado, sem depender de detalhe de serialização.
+- [x] `OptionalTest` → 1.3b **(portado, `tests/regression/test_optional.py`)** · ⚠️ `RemovePMapTest`/`RelationshipTypeToEntityTypeTest` → **movidos pra 1.4b** (testam `m2m.USchemaToDocumentDb`, não o builder — ver INVENTARIO) · `J2SchemaSimpleTests` → **portado** (`tests/regression/test_j2schema_simple.py`).
+  - [x] ✅ **`J2SchemaSimpleTests` portado, com os dois módulos que a 1.1 deixou de fora** (3 casos, string batendo espaço a espaço com o JUnit):
+    - [x] **`SchemaPrinter`** → `intermediate/schema_printer.py` (`schema_string`). Código morto no pipeline (só sob `DEBUG_TYPE.DEBUG`), portado por "fiel e completo". O espaço final que **todo** componente acrescenta (`:63`) é load-bearing na asserção.
+    - [x] **`RawSchemaGen`** → `intermediate/raw_schema_gen.py` (`de_schema`). Construtor de árvore raw separado do `infer`: não seta `entity_name`/`meta`, não lê type marker, ramo de array sem dedup. **Nota:** o Java não trata string (`:34-49`), replicado (fallback `None`).
+    - [x] ⚠️ **`<null>` decidido:** o `schema_string` traduz `None` → `"null"` (reproduz o `String + null` do Java), então o teste afirma `<null>`, não `<None>` — casar o literal do oráculo, registrado na docstring de `schema_printer.py`.
 - [ ] `CountTimestampTest`, `ObjectIdTest`, `TypesTest`, `SimplifyAggrTest` → 1.2/1.3 (bloco B).
-- [ ] **Testes que codificam bug** (`INVENTARIO.md`): `ObjectIdTest` → **acrescentar** caso com `_id` não-`ObjectId` afirmando que infere sem estourar (#6); `CountTimestampTest` → **acrescentar** caso confirmando que `count`/timestamps da segunda ocorrência somem por completo quando duas variações colapsam (#8, não precisa de array); **teste novo** de array vazio (#7).
-- [ ] ⚠️ **`OptionalTest` está vermelho no baseline do oráculo** (é 1 dos 11 de `oracle/docker_explain.md`) — o `OptionalTestConfig` do teste não liga `FeatureAnalyzer` (é o bug do patch `#1`, nunca corrigido no original). **Sem Guice, o bug some por construção** → no porte ele deve **passar**. Não tomar o vermelho do oráculo como valor esperado.
+  - [x] **`TypesTest`** (`tests/regression/test_types.py`) — asserção é count-independente (nenhum `_type` vaza), fixture reconstruída à mão do `Types.json` + `_type` do map-reduce v1 (raiz **e** aninhado). Seguro sem oráculo.
+  - [x] **`ObjectIdTest`** (`tests/regression/test_objectid.py`) — asserção é de **tipo** (`_id` → `PrimitiveType "ObjectId"`), count-independente, fixture com a sentinela v1 `"oid"`. Inclui o caso #6 (abaixo).
+  - [x] **`CountTimestampTest`** (`tests/regression/test_count_timestamp.py`) — 3 entidades; counts por variação (Areas 8/3, Container 1/1) e a **entidade interna `Aggr` com count 2 propagado dos pais** (o cerne do teste, área do #8). Fixture do map-reduce v1. Asserção por nome, não índice.
+  - [x] **`SimplifyAggrTest`** (`tests/regression/test_simplify_aggr.py`) — 2 entidades com 2 variações cada; o `other_names` de tamanho 1/2/4/6 colapsa nas 2 formas distintas de elemento. Fixture do map-reduce v1.
+- [x] **Testes que codificam bug** (`INVENTARIO.md`): ~~`ObjectIdTest` → caso com `_id` não-`ObjectId` (#6)~~ **feito** (`test_id_nao_objectid_infere_sem_estourar`); ~~array vazio (#7)~~ **feito na 1.4** (`test_feature_from_array_vazio_...`); ~~#8~~ **coberto** em `test_schema_inference.py` (`test_bug_8_colapso_descarta_o_meta_inteiro_...`). O #8 dispara no **colapso de variações**, não no dado do `CountTimestamp` (cujas triplas não colapsam — cada forma é distinta); o caso dedicado do #8 já existe na 1.2, não precisa ser re-encenado com a fixture do oráculo.
+- [x] ⚠️ **`OptionalTest` está vermelho no baseline do oráculo** — o `OptionalTestConfig` não liga `FeatureAnalyzer` (bug do patch `#1`). **Sem Guice, o bug some por construção** → no porte **passa**. Afirmado o valor corrigido em `test_optional.py` (docstring registra a divergência).
 - [ ] ⚠️ **`SimplifyAggrTest` não valida o `EVariationMerger`.** `fase1_nucleo_inferencia.md` §1.6 diz "1.2 EVariationMerger" e o `INVENTARIO.md` diz "strategies (1.3)"; **os dois erram**. A simplificação `Aggr{V1,V2,V2,…}` → `Aggr{V1,V2}` é feita pelo **`LinkedHashSet` em `SchemaInference.infer(IAJArray)`** (`:237-242`) — módulo **1.2**. O `SimplifyAggr.json` tem `other_names` de tamanho 1/2/4/6 (array de tamanho variável) → é também dado útil para o **#8**.
-- [ ] Marcar tudo como `@pytest.mark.unit` (bloco B deixa de ser integração ao cortar na tripla).
+- [x] Marcar tudo como `@pytest.mark.unit` (bloco B deixa de ser integração ao cortar na tripla) — feito nos três portados.
 
-**Saída:** suíte de regressão portada e verde, com os valores **corrigidos** onde houve bug.
+**Saída:** ✅ suíte de regressão portada e verde: `OptionalTest` (3), `TypesTest` (2), `ObjectIdTest` (2, inclui #6), `CountTimestampTest` (4), `SimplifyAggrTest` (2), `J2SchemaSimpleTests` (3) em `tests/regression/`; fixtures do bloco B em `tests/fixtures/`; utilitários dead-code `schema_printer.py`/`raw_schema_gen.py`. `RemovePMap`/`RelationshipType` foram pra 1.4b (feitos). Bugs afirmados com valor corrigido (#6/#7) ou fielmente descartado (#8).
 
 ---
 
-## 1.7 — Costura + golden-master
+## 1.7 — Costura + golden-master (parcial: mintest ✅, Northwind pendente da Fase 2)
 
-- [ ] `BuildUSchema`/`DefaultBuildUSchema` → fachada Python: instanciar as 6 estratégias e injetar por construtor (o wiring que o Guice fazia).
-- [ ] Rodar o pipeline completo sobre a tripla do **Northwind** e comparar com `resources/mongodb/model_northwind.xmi` pelo `compare()` da 0.3.
-- [ ] **Divergência esperada e desejada:** o oráculo tem o **#8** (deliberadamente sem patch — `oracle/docker_explain.md`), o porte não. As 8 não-fatais em `Orders`/`Purchase_orders` que a 0.5 já registrou são exatamente essa assinatura. **Documentar a diferença como resultado**, não "consertar" para bater.
-- [ ] Repetir com `model.xmi` (mínimo MongoDB) e `model_mintest.xmi`.
+- [x] `BuildUSchema` → fachada Python: `inference/build_uschema.py` (`BuildUSchema.build_from_rows`/`build_and_write`). A orquestração é a linha do `JSON2Schema.fromJSONArray:97` (`builder.build(name, si.infer(rows))`); a fachada só amarra as duas. ⚠️ **Achado (e correção de um engano intermediário): há DOIS entry-points com wiring diferente.** O `DefaultBuildUSchema` (doc2uschema/main, usado pelos JUnit) liga o **`Null`** sorter; o **`MongoDB2USchemaMain`** (mongodb2uschema/main, **o que o oráculo roda** — `oracle/entrypoint.sh`) liga o **`Default`**. Como os XMIs de referência vêm do `MongoDB2USchemaMain`, a fachada mirra ESSE (sorter `Default`, já o default do builder → sem override). **A escolha é indiferente para o golden-master:** o harness casa variações por estrutura, não por posição (`_compare_schema_type_variations`, bag matching), e ignora `variationId` — Null vs Default muda só ordem/numeração, invisíveis ao `compare`.
+- [x] **Golden-master do `mintest`** (`tests/datasets/test_mintest_golden_master.py`) — o pipeline completo (fachada) reproduz `model_mintest.xmi` com **0 divergências** pelo `compare()` da 0.3. Valida ponta a ponta: colapso de variações, entidade interna `_id` do `{$oid}`, propagação de count pra interna (fica com 5), agregados, `PList`, opcionalidade via `FeatureAnalyzer`, e o wiring do `MongoDB2USchemaMain`.
+  - [x] ⚠️ **Fixture reconstruída, não extraída** (`tests/fixtures/mintest_spark.json`). A tripla do caminho Spark foi montada à mão da estrutura do XMI (regras do `Helpers.simplify`), porque não há extrator Spark (Fase 2) nem fonte independente do mintest. Como os `count` do mintest são todos 1, a reconstrução é exata → 0 divergências. Registrado em `tests/fixtures/README.md` e na docstring do teste: **isto valida `infer`+`build`+fachada, não o extrator**.
+- [ ] **Northwind — ADIADO PARA A FASE 2 (decisão registrada).** Reconstruir a tripla à mão não serve: (a) os `count` reais não saem do esquema (confirmado no `model.xmi`, que fecha estruturalmente mas com 1 divergência de count por reconstrução imprecisa); (b) o objetivo do Northwind é **exibir a divergência do #8**, e isso exige a tripla que o oráculo de fato extraiu. **A opção "script leve" (reproduzir o `Helpers.simplify` em Python, como o bloco B) foi investigada e é mais pesada que no bloco B:** o `_id` do Northwind é **inteiro** (`"_id":1`), não ObjectId — cai no #6, então a reprodução teria de replicar o `Helpers` **patcheado** (`0006`), o tratamento de timestamp genérico, e resolver por que o XMI tem uma entidade `_id`/`$oid` se o `_id` é inteiro. Isso é um mini-extrator do caminho-documento — pertence à **Fase 2** (extrator PySpark), não à costura da 1.7. Quando a Fase 2 existir, o golden-master do Northwind (com as 8 não-fatais do #8 **documentadas como resultado**, não corrigidas) fecha o gate de integração.
+- [x] **Unicidade das chaves de `mStructuralVariations`** (movido da 1.4) — **exercitada** pelo golden-master do mintest: o índice reverso resolve o `_id` interno referenciado por agregados em 5 variações, sem colisão, e o `compare` de 0 divergências confirma que cada `Aggregate` aponta pra variação certa. Um teste de colisão dedicado (duas variações estruturalmente iguais) segue como reforço opcional, não bloqueia.
 
-**Saída:** pipeline ponta a ponta reproduzindo estruturalmente o oráculo, com as divergências de #6/#7/#8 explicadas uma a uma.
+**Saída:** ✅ `inference/build_uschema.py` (fachada, wiring do `MongoDB2USchemaMain`) + `tests/datasets/test_mintest_golden_master.py` (golden-master do mintest, **0 divergências**) + `tests/fixtures/mintest_spark.json`. O golden-master do **Northwind** foi **adiado para a Fase 2** por decisão (depende do extrator, não do núcleo) — é a única peça da Fase 1 que atravessa para a próxima fase.
 
 ---
 
 ## ✅ Gate de aceite da Fase 1
 
-- [ ] **Por módulo:** os testes de regressão portados (1.6) passam, com valores corrigidos onde houve bug.
-- [ ] **Integração:** o pipeline reproduz **estruturalmente** o XMI-oráculo do Northwind (harness da 0.3), com toda divergência fatal explicada por um bug catalogado.
-- [ ] Determinismo coberto por teste: ordem de campos, `__eq__`/`__hash__`, ordem das variações.
-- [ ] `ruff` + `mypy --strict` limpos. ⚠️ Lembrar do aviso do `CLAUDE.md`: **o `mypy` não protege nada que atravesse a fronteira do PyEcore** — em 1.4 todo acesso a campo `EObject` precisa ser exercitado por teste ao menos uma vez, inclusive nos caminhos de erro.
+- [x] **Por módulo:** os testes de regressão portados (1.6) passam, com valores corrigidos onde houve bug (#6/#7 corrigidos, #8 descartado fielmente).
+- [~] **Integração:** o pipeline reproduz o XMI-oráculo pelo harness da 0.3 — **mintest com 0 divergências** (`tests/datasets/`). O **Northwind** (onde as 8 divergências **não-fatais** do #8 seriam exibidas) foi **adiado para a Fase 2**, que produz a tripla real. Parcial por decisão, não por lacuna do núcleo.
+- [x] Determinismo coberto por teste: ordem de campos (`_java_string_sort_key`), `__eq__`/`__hash__` (`test_raw.py`), ordem das variações (`test_strategies_emf.py`, e o golden-master do mintest confirma no fluxo completo).
+- [x] `ruff` + `mypy --strict` limpos (526 testes verdes). ⚠️ Aviso do `CLAUDE.md` respeitado: os acessos a campo `EObject` do builder/m2m/fachada são exercitados por teste (foi assim que os typos `entitties`/`Attribue`/`upperBouund`/`referenced.eClass` apareceram).
 
 **Entregáveis:** `extractors/triple.py` · `intermediate/raw.py` + `metadata.py` · `inference/strategies.py` + `schema_inference.py` + `builder.py` · suíte de regressão portada (`J2SchemaSimple`/`Optional`/`RemovePMap`/`RelationshipTypeToEntityType`/`CountTimestamp`/`ObjectId`/`Types`/`SimplifyAggr` + testes novos de #7/#8 + `__eq__` + por estratégia).
 

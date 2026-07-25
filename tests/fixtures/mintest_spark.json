@@ -1,0 +1,74 @@
+[
+  {
+    "schema": {
+      "_type": "products",
+      "_id": {
+        "$oid": "000000000000000000000000"
+      },
+      "price": 0.0,
+      "stock": 0,
+      "title": ""
+    },
+    "count": 1,
+    "firstTimestamp": 1781470615,
+    "lastTimestamp": 1781470615
+  },
+  {
+    "schema": {
+      "_type": "products",
+      "_id": {
+        "$oid": "000000000000000000000000"
+      },
+      "price": 0.0,
+      "tags": [
+        ""
+      ],
+      "title": ""
+    },
+    "count": 1,
+    "firstTimestamp": 1781470615,
+    "lastTimestamp": 1781470615
+  },
+  {
+    "schema": {
+      "_type": "customers",
+      "_id": {
+        "$oid": "000000000000000000000000"
+      },
+      "city": "",
+      "name": "",
+      "orders": 0,
+      "vip": false
+    },
+    "count": 1,
+    "firstTimestamp": 1781470615,
+    "lastTimestamp": 1781470615
+  },
+  {
+    "schema": {
+      "_type": "customers",
+      "_id": {
+        "$oid": "000000000000000000000000"
+      },
+      "city": "",
+      "name": ""
+    },
+    "count": 1,
+    "firstTimestamp": 1781470615,
+    "lastTimestamp": 1781470615
+  },
+  {
+    "schema": {
+      "_type": "customers",
+      "_id": {
+        "$oid": "000000000000000000000000"
+      },
+      "city": "",
+      "name": "",
+      "orders": 0
+    },
+    "count": 1,
+    "firstTimestamp": 1781470615,
+    "lastTimestamp": 1781470615
+  }
+]

@@ -79,9 +79,9 @@ Fase 1.
 | JUnit | Linhas | Módulo do porte | O que fixa |
 |---|---|---|---|
 | `doc2uschema/…/regression/InflectorTest` | 394 | `naming.inflector` (**0.6**) | pluralize/singularize/camelCase — **desbloqueado hoje** |
-| `doc2uschema/…/regression/OptionalTest` | 72 | `inference.strategies` (1.3) | `optional` de atributo entre variações |
-| `doc2uschema/…/regression/RemovePMapTest` | 141 | `intermediate.raw` / builder (1.1/1.4) | remoção de `PMap` |
-| `doc2uschema/…/regression/RelationshipTypeToEntityTypeTest` | 158 | `inference.builder` (1.4) | `Reference` × `RelationshipType` |
+| `doc2uschema/…/regression/OptionalTest` | 72 | `inference.strategies` (1.3b) + pipeline (1.2/1.4) | `optional` de atributo entre variações — **valida o `FeatureAnalyzer`** |
+| `doc2uschema/…/regression/RemovePMapTest` | 141 | ✅ **`m2m.USchemaToDocumentDb` (1.4b, portado)** — ~~1.1/1.4~~ | remoção de `PMap` |
+| `doc2uschema/…/regression/RelationshipTypeToEntityTypeTest` | 158 | ✅ **`m2m.USchemaToDocumentDb` (1.4b, portado)** — ~~1.4~~ | `RelationshipType` → `EntityType` |
 | `doc2uschema/…/regression/J2SchemaSimpleTests` | — | `intermediate.raw` (1.1) | JSON → schema cru; asserções sobre a **string** do schema |
 | `mongodb2uschema/…/SimplificationTest` | 187 | `extractors.mongo` (2.1) | `Helpers.simplify` — normalização do documento |
 | `mongodb2uschema/…/PairOperationsTest` | 68 | `extractors.mongo` (2.1) | `generateDocumentPair` / `reducePairs` (o `map`/`reduceByKey`) |
@@ -94,6 +94,21 @@ Fase 1.
 > linha a linha, mas por reconstrução. Portar por cima seria redundante. A
 > **conferência de asserções** foi feita e **achou quatro lacunas reais**: ver a
 > seção abaixo.
+>
+> ⚠️ **Correção (achado da 1.6, abrindo o `.java`): `RemovePMapTest` e
+> `RelationshipTypeToEntityTypeTest` NÃO testam o `USchemaModelBuilder`.** O
+> mapeamento acima (`1.1/1.4` e `1.4`) foi inferido pelo nome do teste, sem abrir
+> o fonte — o mesmo erro circular que gerou o falso C8. Os dois chamam
+> `schema2DDb.adaptToDocumentDb(schema)`, onde `schema2DDb` é
+> `es.um.uschema.doc2uschema.m2m.USchemaToDocumentDb` — uma transformação
+> **model-to-model** que roda **depois** do builder e faz duas coisas: (1)
+> `relTypeToEntityType` converte todo `RelationshipType` em `EntityType` com
+> prefixo `Ref_`; (2) `removePMap` extrai cada `PMap` para uma entidade `Map_<Attr>`
+> com features `key`/`value`. **Esse módulo `m2m/` não está no roadmap da Fase 1**
+> (nem na 1.4, nem em outra sub-fase) e **não foi portado**. Portá-lo (com seus
+> dois testes) é uma sub-fase própria — **1.4b** — registrada no
+> `todolist_fase1.md`. Só o `OptionalTest` do bloco A é portável hoje; ele
+> exercita o pipeline `infer`+`build`+`FeatureAnalyzer`, que já existe.
 
 ---
 
