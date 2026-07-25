@@ -258,6 +258,14 @@ class USchemaToDocumentDb:
         container.features.append(agg)
         container.features.remove(attr)
 
+        # Recursão sobre o `value` LOCAL (não o da variação reutilizada) — fiel
+        # ao Java (`:218-219`, `if (value.getType() instanceof PMap)
+        # removePMap(schema, value)`). Recursar sobre a variação reutilizada
+        # divergiria do original. Além disso não se manifesta: na 1ª ocorrência
+        # de um `PMap` aninhado a recursão troca este `value` por um `Aggregate`,
+        # então nenhuma `compare_var` futura (com `value` ainda `Attribute`)
+        # casa com a variação já existente — a reutilização não ocorre neste
+        # caminho.
         if value.type.eClass.name == "PMap":
             self._remove_pmap(schema, value)
 

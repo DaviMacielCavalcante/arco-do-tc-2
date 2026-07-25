@@ -80,8 +80,8 @@ Fase 1.
 |---|---|---|---|
 | `doc2uschema/…/regression/InflectorTest` | 394 | `naming.inflector` (**0.6**) | pluralize/singularize/camelCase — **desbloqueado hoje** |
 | `doc2uschema/…/regression/OptionalTest` | 72 | `inference.strategies` (1.3b) + pipeline (1.2/1.4) | `optional` de atributo entre variações — **valida o `FeatureAnalyzer`** |
-| `doc2uschema/…/regression/RemovePMapTest` | 141 | ⚠️ **`m2m.USchemaToDocumentDb` (1.4b, não portado)** — ~~1.1/1.4~~ | remoção de `PMap` |
-| `doc2uschema/…/regression/RelationshipTypeToEntityTypeTest` | 158 | ⚠️ **`m2m.USchemaToDocumentDb` (1.4b, não portado)** — ~~1.4~~ | `RelationshipType` → `EntityType` |
+| `doc2uschema/…/regression/RemovePMapTest` | 141 | ✅ **`m2m.USchemaToDocumentDb` (1.4b, portado)** — ~~1.1/1.4~~ | remoção de `PMap` |
+| `doc2uschema/…/regression/RelationshipTypeToEntityTypeTest` | 158 | ✅ **`m2m.USchemaToDocumentDb` (1.4b, portado)** — ~~1.4~~ | `RelationshipType` → `EntityType` |
 | `doc2uschema/…/regression/J2SchemaSimpleTests` | — | `intermediate.raw` (1.1) | JSON → schema cru; asserções sobre a **string** do schema |
 | `mongodb2uschema/…/SimplificationTest` | 187 | `extractors.mongo` (2.1) | `Helpers.simplify` — normalização do documento |
 | `mongodb2uschema/…/PairOperationsTest` | 68 | `extractors.mongo` (2.1) | `generateDocumentPair` / `reducePairs` (o `map`/`reduceByKey`) |

@@ -77,8 +77,9 @@ class BuildUSchema:
     def build_from_rows(self, name: str, triples: list[SchemaTriple]) -> EObject:
         """Construir o ``USchema`` a partir das triplas (a costura completa).
 
-        Porte de ``JSON2Schema.fromJSONArray`` (``:97``) com o wiring de
-        ``DefaultBuildUSchema``.
+        Porte de ``JSON2Schema.fromJSONArray`` (``:97``) com o wiring do
+        ``MongoDB2USchemaMain`` (o gerador dos XMIs-oráculo; ver a docstring do
+        módulo).
 
         Parameters
         ----------
