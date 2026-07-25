@@ -79,8 +79,8 @@ O critério de aceite **por módulo** não é só o oráculo do Northwind no fim
 | `CountTimestampTest` | 1.2 `infer` / propagação de meta | count/timestamp por variação; em não-raiz, copiados do pai (**área do #8**) |
 | `ObjectIdTest` | 1.2 `infer` / tipos | distinguir ObjectId de String (não inferir como aggregate) (**área do #6**) |
 | `TypesTest` | 1.2 / 1.4 | inferência de tipos primitivos |
-| `OptionalTest` | 1.3 `OptionalTagger`/`FeatureAnalyzer` | opcionalidade entre variações |
-| `SimplifyAggrTest` | 1.2 `EVariationMerger` | simplificação/merge de agregados equivalentes |
+| `OptionalTest` | 1.3b `FeatureAnalyzer` (**não** `OptionalTagger` — este é código morto) | opcionalidade entre variações |
+| `SimplifyAggrTest` | 1.2 `SchemaInference.infer(array)` (`LinkedHashSet`, **não** `EVariationMerger`) | simplificação/merge de agregados equivalentes |
 | `RelationshipTypeToEntityTypeTest` | 1.4 `build`/`fillEV` | distinção referência × relacionamento |
 | `RemovePMapTest` | 1.1 / 1.4 | remoção de PMap |
 | (`InflectorTest`) | Fase 0 (Inflector) | capitalização/pluralização |

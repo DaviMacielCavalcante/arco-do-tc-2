@@ -136,7 +136,7 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 ---
 
-## 1.3 — As estratégias (Guice → wiring por construtor)
+## 1.3 — As estratégias (Guice → wiring por construtor) ✅
 
 > ⚠️ **Contradiz `fase1_nucleo_inferencia.md` §1.3**, que trata as 6 como uma camada
 > só. **Elas se dividem em dois grupos por dependência**, e o grupo decide *quando*
@@ -145,10 +145,10 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 > desaparece: instanciar e passar por construtor (o Java já tem construtor além do `@Inject` —
 > `SchemaInference:70`, `USchemaModelBuilder:74`).
 
-### 1.3a — Nível raw (pré-requisito de 1.2)
+### 1.3a — Nível raw (pré-requisito de 1.2) ✅
 
-- [ ] `AliasedAggregatedEntityJoiner` + `Default*` — une entidades-alias via as 10 `AggregateHintWords` (`has`, `with`, `set`, `list`, …), testando `hint+entity` e `entity+hint` com `equalsIgnoreCase` (`DefaultAliasedAggregatedEntityJoiner.java:13-14,21-24`). O `findFirst` (`:26`) tem comentário do autor (`:24`) admitindo que ignorar os demais casamentos "could lead us to some bad-named entities" — **manter**.
-- [ ] `EVariationMerger` + `Default*` — laço `do/while` até estabilizar; ao fundir, `updateReferences` + `combineMetadata` + remoção (`DefaultEVariationMerger.java:36-42`). O `walkAndMerge` é uma noção **mais frouxa** que `__eq__` (casa por nome de campo e desce recursivo), e `homogeneousArraysMerge` reconcilia array vazio com não-vazio e concilia lower/upper bounds (`:120-140`).
+- [x] `AliasedAggregatedEntityJoiner` + `Default*` — une entidades-alias via as 10 `AggregateHintWords` (`has`, `with`, `set`, `list`, …), testando `hint+entity` e `entity+hint` com `equalsIgnoreCase` (`DefaultAliasedAggregatedEntityJoiner.java:13-14,21-24`). O `findFirst` (`:26`) tem comentário do autor (`:24`) admitindo que ignorar os demais casamentos "could lead us to some bad-named entities" — **manter**. Portado como `join_aggregated_entities`; testes em `test_strategies.py` (prefixo/sufixo de hint, case-insensitive, renomeio, `findFirst` pega a 1ª do dict).
+- [x] `EVariationMerger` + `Default*` — laço `do/while` até estabilizar; ao fundir, `updateReferences` + `combineMetadata` + remoção (`DefaultEVariationMerger.java:36-42`). O `walkAndMerge` é uma noção **mais frouxa** que `__eq__` (casa por nome de campo e desce recursivo), e `homogeneousArraysMerge` reconcilia array vazio com não-vazio e concilia lower/upper bounds (`:120-140`). Portado como `merge_equivalent_evs`; testes em `test_strategies.py` (funde por forma ignorando `entity_name`, combina metadata no sobrevivente).
   - [x] ⚠️ **M5 — `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios** (`:132`). O comentário do autor assume que isso não ocorre; falso quando outro campo do mesmo par reconcilia primeiro (cheio x vazio) e o walk alcança um segundo campo vazio nos dois lados. Confirmado por execução real do Java (JDK 11, fontes do commit pinado). Replicado fielmente (`IndexError`), travado por teste (`test_merge_ambos_vazios_estoura_index_error`). Ver `bugs_originais.md` M5.
 
 ### 1.3b — Nível EMF/PyEcore (pré-requisito de 1.4) ✅
@@ -160,7 +160,7 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
   - [x] **M3 — `sortByCount` não ordena** — o `ECollections.sort` está **comentado** (`:40`); só renumera `variationId`. Ou seja, com contagem e sem timestamp, a ordem é a de inserção. Replicado (não corrigido) e travado por teste (`test_sort_m3_ramo_de_count_nao_ordena_so_renumera`).
   - [x] **M4 — comparadores devolvem `-1`/`1`, nunca `0`** (`:28,34,46`) — não são ordem total; para elementos iguais afirmam `>`. Replicado com `functools.cmp_to_key`; a ordem resultante entre "iguais" é fixada em teste (não a mesma coisa que dizer que é estável/previsível).
 - [x] `OptionalTagger` + `Default*` + `Null*` — ⚠️ **é código morto no pipeline.** Só `put()` é chamado (`USchemaModelBuilder:127`); `calcOptionality()` (`:134`) e `isOptional()` (`:187`) estão **comentados** no original ("TODO: Remove until recode"). Portado pelo "fiel e completo" (como o `camelCase`/`underscore` do Inflector na 0.6) como classe `OptionalTagger` (+ `NullOptionalTagger`), com nota explícita de código morto na docstring — **sem** teste de equivalência com o oráculo, só testes unitários isolando o efeito.
-  - [ ] ⚠️ **Corrigir o mapa de `fase1_nucleo_inferencia.md` §1.6:** o `OptionalTest` valida o **`FeatureAnalyzer`**, não o `OptionalTagger`. (Ainda pendente — fazer junto da 1.6.)
+  - [x] ⚠️ **Corrigir o mapa de `fase1_nucleo_inferencia.md` §1.6:** o `OptionalTest` valida o **`FeatureAnalyzer`**, não o `OptionalTagger`. **Feito** (junto da 1.6) — corrigido também o `SimplifyAggrTest` (é o `LinkedHashSet` da 1.2, não o `EVariationMerger`).
 
 **Saída:** ✅ `inference/strategies.py` ganhou `set_optional_properties`, `ReferenceMatcher`/`create_reference_matcher`, `sort_structural_variations`/`null_sort_structural_variations`, `OptionalTagger`/`NullOptionalTagger`; `tests/unit/test_strategies_emf.py` (18 casos, `EObject` montados via API reflexiva do PyEcore, mesmo estilo de `test_equivalence.py`). Achados novos catalogados: **M3**, **M4**, **M6**. `OptionalTest`/`SimplifyAggrTest` (JUnit) continuam **adiados pra 1.6** de propósito (cortar na tripla via fixture do oráculo), mesmo padrão da 1.2/1.3a.
 
@@ -181,7 +181,7 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 
 ---
 
-## 1.4 — `USchemaModelBuilder.build` + `fillEV`
+## 1.4 — `USchemaModelBuilder.build` + `fillEV` ✅
 
 > Ordem verificada em `USchemaModelBuilder.java:89-148`.
 
@@ -207,15 +207,21 @@ saíram do escopo desta entrega e estão na 1.6, junto do teste que os exercita.
 > transformação **model-to-model** que roda **depois** do `USchemaModelBuilder`, e
 > que o roadmap da Fase 1 **não lista em lugar nenhum**. Corrigido no `INVENTARIO.md`.
 
-- [ ] Portar `USchemaToDocumentDb.adaptToDocumentDb` (`m2m/USchemaToDocumentDb.java`): (1) `relTypeToEntityType` — todo `RelationshipType` vira `EntityType` com prefixo `Ref_`, cuidando de colisão de nome e renumeração de `variationId` (`:78-164`); (2) `removePMap` — cada `Attribute` de tipo `PMap` é extraído para uma entidade `Map_<Attr>` com features `key`/`value`, recursivo em `PMap` aninhado (`:166-220`).
-- [ ] Portar `RemovePMapTest` (3 casos: simples, duas variações, recursivo) e `RelationshipTypeToEntityTypeTest` (4 casos) contra o módulo portado.
-- [ ] **Decidir escopo/prioridade:** no fluxo Mongo→U-Schema que a Fase 1 porta, `RelationshipType` só nasce no paradigma-grafo (Neo4j) e `PMap` só se um extrator o gerar — então `adaptToDocumentDb` sobre a saída do nosso builder é quase no-op. Confirmar se entra na Fase 1 ou vira trabalho da Fase 2/3 (paradigma-grafo).
+- [x] Portar `USchemaToDocumentDb.adaptToDocumentDb` (`m2m/USchemaToDocumentDb.java`) — `inference/m2m.py`, os quatro métodos:
+  - [x] **`adapt_to_document_db`** (`:49-69`) — coleta todos os `RelationshipType` e `Attribute` de `PMap` (as duas coleções via `itertools.chain`), depois aplica relTypes **antes** dos maps. Coleta-antes-de-transformar é load-bearing.
+  - [x] **`_rel_type_to_entity_type`** (`:78-155`) — `RelationshipType` → `EntityType` com prefixo `Ref_`. Monta `l_references` (as `Reference` decoradas por este rel via `isFeaturedBy`, casadas por **identidade**), embute os atributos da aresta na variação de origem (com `_deep_copy` + `_id` sintético `ObjectId`), reaponta as refs e move as variações — CASO A (entidade nova, leva tudo) vs CASO B (colisão de nome: dedup por `compare_variation` + renumeração contínua).
+  - [x] **`_remove_pmap`** (`:166-220`) — `_remove_pmap`. Find-or-create em dois níveis (entidade `Map_<Attr>` por **nome**, variação `{key,value}` por **estrutura** via `compare_variation`), troca do `PMap` por `Aggregate` no container (`eContainer()`), e recursão em `PMap` de `PMap`.
+  - [x] **`_deep_copy`** — substitui o `EcoreUtil.copy` (`:104`), inexistente no PyEcore (`EcoreUtils.copy` não existe; `copy.deepcopy` estoura `BadValueError`). **Cópia genérica**, percorrendo as `eAllStructuralFeatures()` do metamodelo — sem ramo por tipo, igual ao que o `EcoreUtil.copy` faz por dentro. Três regras: `EAttribute` → copia o valor; `EReference` de containment → copia recursivo; `EReference` **não**-containment → pula.
+    - [x] ⚠️ **Por que pular não-containment:** essas features têm `eOpposite`, então atribuí-las na cópia **muta o original** — `copia.key = orig.key` insere a cópia em `Key.attributes` do `Key` original (verificado: lista vai de 1 para 2). O Java evita o mesmo com o `Copier`, que remapeia refs internas à árvore copiada e deixa as externas de fora.
+    - [x] ~~**DÉBITO TÉCNICO** — cobria só `PrimitiveType`, composto estourava `AttributeError`~~ **PAGO.** A primeira versão hardcodava o tipo; a versão genérica cobre `PrimitiveType`, `PList`/`PSet`, `PMap` (inclusive aninhado) e `PTuple`, validado caso a caso. O porte deixou de estar menos completo que o original neste ponto.
+- [x] Portar `RemovePMapTest` (3 casos) e `RelationshipTypeToEntityTypeTest` (4 casos) — versionados em `tests/regression/test_remove_pmap.py` e `test_relationship_type_to_entity_type.py`, todos verdes. Os `USchema` de entrada são montados na própria classe de teste (como o JUnit), sem Mongo nem inferência.
+- [x] **Escopo/prioridade decidido:** a 1.4b foi portada **agora**, junto da 1.6, em vez de adiada. O módulo roda ponta a ponta (`adapt_to_document_db` sobre schema com `RelationshipType` + `PMap` juntos → `Ref_`/`Map_` + `relationships` vazio), mesmo que no fluxo Mongo→U-Schema atual ele seja quase no-op — fica pronto pro paradigma-grafo (Fase 2/3) sem retrabalho.
 
-**Saída:** (pendente) `USchemaToDocumentDb` portado + `RemovePMapTest`/`RelationshipTypeToEntityTypeTest` verdes, OU decisão registrada de adiar para a fase do paradigma-grafo.
+**Saída:** ✅ `inference/m2m.py` completo (4 métodos), `tests/regression/` com os 2 JUnit portados (7 casos). `ruff`/`mypy --strict` limpos; suíte inteira verde (515). Achado que originou a sub-fase (`INVENTARIO` mapeava os 2 testes no builder) registrado em `INVENTARIO.md`/`README.md`.
 
 ---
 
-## 1.5 — `abstractjson` → JSON nativo (camada que **desaparece**)
+## 1.5 — `abstractjson` → JSON nativo (camada que **desaparece**) ✅
 
 > Não é tarefa de porte: é uma **remoção**. O Bridge Jackson/Gson (`IAJAdapter` e as
 > ~25 classes de `util/abstractjson/`) existe para abstrair duas libs de JSON; em
