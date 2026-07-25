@@ -15,10 +15,21 @@ Os dois caminhos de extração produzem triplas **diferentes** para o mesmo dado
 `es.um.uschema.documents/resources/mapreduce/mongodb/v1/`), rodado num MongoDB
 7.0 descartável via `mongosh` — não pelo Spark:
 
-| Fixture | `testSources` de origem | Caminho | Coleções |
+| Fixture | Origem | Caminho | Coleções |
 |---|---|---|---|
-| `count_timestamp.json` | `CountTimestamp.json` | map-reduce v1 | `areas`, `container` |
-| `simplify_aggr.json` | `SimplifyAggr.json` | map-reduce v1 | `persons` |
+| `count_timestamp.json` | `CountTimestamp.json` (map-reduce real) | map-reduce v1 | `areas`, `container` |
+| `simplify_aggr.json` | `SimplifyAggr.json` (map-reduce real) | map-reduce v1 | `persons` |
+| `mintest_spark.json` | **reconstruída** de `model_mintest.xmi` | Spark (à mão) | `products`, `customers` |
+
+⚠️ **`mintest_spark.json` é diferente das outras duas.** Não veio de um extrator
+rodando: foi **reconstruída à mão** a partir da estrutura de
+`resources/mongodb/model_mintest.xmi`, seguindo as regras do `Helpers.simplify`
+do caminho **Spark** (`_id` como `{"$oid": …}`, folhas como sentinelas de tipo,
+`_type` = coleção). Como todos os `count` do mintest são 1, a reconstrução é
+exata e o golden-master fecha com **0 divergências**
+(`tests/datasets/test_mintest_golden_master.py`). Para datasets com contagens
+reais (Northwind), a reconstrução à mão erra os `count` — aí é preciso a tripla
+do extrator (Fase 2) ou um dump do oráculo. Ver `todolist_fase1.md` §1.7.
 
 **Por que v1 e não Spark.** O `CountTimestampTest`/`SimplifyAggrTest` rodam
 `mapRed2Array(Path.of("mapreduce/mongodb/v1/"))` (`ObjectIdTest.java:56` e irmãos).
