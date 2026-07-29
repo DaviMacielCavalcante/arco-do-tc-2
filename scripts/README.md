@@ -5,8 +5,10 @@ importável.
 
 ## Geradores de dataset (já existentes no repo original — trazer para cá)
 
-- `gen_userprofiles.py` — User Profiles em MongoDB (Rotas A e B).
-- `gen_userprofiles_neo4j.py` — User Profiles em grafo.
+- `gen_userprofiles.py` — User Profiles em MongoDB (Rotas A e B). **Ainda não trazido.**
+- `gen_userprofiles_neo4j.py` — User Profiles em grafo. Trazido verbatim do
+  original (autoria do Davi), não reformatado. Confirma a estrutura dos
+  XMIs-oráculo (`resources/neo4j/movies_min.xmi`/`up_*.xmi`).
 
 Quatro tamanhos: 100k / 200k / 400k / 800k `User` (50k / 100k / 200k / 400k `Movie`).
 

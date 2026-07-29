@@ -3,6 +3,11 @@
 **Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Base técnica:** `analise_ferramenta_uschema.md` (§3.3–3.4)
 **Entregável:** extratores PySpark (MongoDB + Neo4j) · **Pré-requisito:** Fase 0 (oráculo + harness); integra com a Fase 1 pelo formato da tripla
 
+> ⚠️ **Guia desatualizado — fonte de verdade agora é `todolist_fase2.md`.**
+> §2.1 referencia o extrator MongoDB errado (`ArchetypeMapping`, não
+> `Helpers`); a leitura é via driver nativo (`pymongo`/`neo4j`), não conector
+> Spark.
+
 ## Objetivo
 
 Portar para **PySpark** a camada de extração distribuída dos dois paradigmas, produzindo as triplas `{schema, count, timestamps}` que alimentam o núcleo único da Fase 1. É a parte de **menor risco técnico**: o uso de Spark é um *map-reduce* mínimo, traduzível operador a operador.
@@ -28,13 +33,13 @@ MongoSpark.load(jsc)
   .collectAsMap();
 ```
 
-**Porte PySpark (esboço):**
+**Porte (esboço, driver nativo):**
 ```python
-rdd = (spark.read.format("mongodb").option("collection", col).load().rdd
-       .map(archetype)            # doc → (assinatura, meta)
-       .reduceByKey(combine)      # soma counts / combina timestamps
-       .map(to_triple))           # → {schema, count, timestamps}
-triplas = rdd.collect()           # entrega ao núcleo da Fase 1
+docs = mongo_client[db][collection].find()   # pymongo, cursor de Document cru
+pares = (archetype(doc) for doc in docs)      # doc → (assinatura, meta)
+# reduceByKey equivalente em Python puro, ou via Spark mapPartitions se
+# a paralelização for necessária — ver decisão de arquitetura na 2.0
+triplas = combinar_e_montar(pares)            # → {schema, count, timestamps}
 ```
 
 **`archetype` (a função de assinatura) — pura, recursiva, `doc → assinatura`:**
@@ -47,7 +52,7 @@ triplas = rdd.collect()           # entrega ao núcleo da Fase 1
 - [ ] Portar `JSONMapping` (montagem da tripla) e a combinação de count/timestamps no `reduceByKey`.
 - [ ] **Bug #6 por construção:** ler o `_id` **genericamente** (não assumir `ObjectId`); extrair timestamp só se for `ObjectId`, senão `0`. Suporta `_id` inteiro de origem relacional.
 - [ ] **Bug #7 por construção:** a assinatura de array vazio não deve indexar elemento inexistente.
-- [ ] Conectar via `spark.read.format("mongodb")` com `mongo-spark-connector 3.0.1` (`spark.jars.packages`).
+- [ ] Conectar via `pymongo.MongoClient(...)` (driver nativo, não conector Spark).
 
 **Gate:** a contagem de assinaturas por coleção é **idêntica** à do Java; o XMI final (tripla → núcleo Fase 1 → PyEcore) é estruturalmente equivalente ao oráculo (Northwind).
 
@@ -72,7 +77,7 @@ neo4j.cypher(query).loadRowRdd().toJavaRDD()
 **Tarefas:**
 - [ ] Portar `IdArchetypeMapping`, `ReduceByIdArchetype` e `SplitMapping` para funções Python (com testes: nó isolado, aresta com/sem propriedade, nó-sumidouro).
 - [ ] Montar as triplas a partir do grafo e entregá-las ao núcleo da Fase 1 (mesmo contrato do MongoDB).
-- [ ] Conectar via PySpark + neo4j-spark-connector — **validar a versão funcional** contra o Neo4j-alvo (o legado 2.4.5-M2 conectou no 2026.05.0, mas confirmar na stack final; pode ser necessário o conector 5.x para Neo4j 5+).
+- [ ] Conectar via `neo4j.GraphDatabase.driver(...)` (driver nativo, não conector Spark).
 - [ ] Confirmar que `RelationshipType` e propriedades de aresta saem corretas.
 
 **Gate:** contagens (incl. a de `RelationshipType` por entidade de origem) idênticas ao Java; XMI ≡ oráculo (grafo mínimo + User Profiles em grafo).
@@ -83,11 +88,10 @@ neo4j.cypher(query).loadRowRdd().toJavaRDD()
 
 Ambos os extratores produzem o **mesmo formato de tripla**. Isso é o que permite um único núcleo de inferência: a saída de 2.1 e de 2.2 é intercambiável da perspectiva do `SchemaInference` portado. Definir e congelar esse formato cedo (com a Fase 1) evita retrabalho.
 
-## Conectores e empacotamento
+## Leitura: driver nativo, não conector Spark
 
-- MongoDB: `mongo-spark-connector_2.12:3.0.1` (ou versão compatível com o Spark do porte) via `spark.jars.packages`.
-- Neo4j: validar entre o legado `neo4j-contrib:neo4j-spark-connector:2.4.5-M2` e o oficial `org.neo4j:neo4j-connector-apache-spark` 5.x conforme o Neo4j-alvo.
-- Documentar as versões exatas (reprodutibilidade).
+- MongoDB: `pymongo` (`4.17.0`). Neo4j: `neo4j` (`6.2.0`).
+- Nenhum conector oficial do Spark é usado — ambos viraram DataFrame-only, sem a API RDD que o oráculo usa. Spark, se entrar, é só paralelizador opcional.
 
 ## Gate de aceite da Fase 2
 
@@ -99,4 +103,4 @@ Para os dois paradigmas: contagem de assinaturas idêntica ao Java **e** XMI fin
 
 ## Riscos da fase
 
-Versão do conector Neo4j incompatível com o servidor-alvo (validar cedo); a semântica de `count` em `RelationshipType` (contar fontes distintas, não arestas brutas) é sutil; a assinatura de array vazio (#7) e o `_id` genérico (#6) precisam ser tratados aqui, na origem da assinatura.
+A semântica de `count` em `RelationshipType` (fontes distintas, não arestas brutas) é sutil; #6/#7 precisam ser tratados na origem da assinatura; a ordem de despacho `Int64`/`bool`/`int` precisa ser explícita.
