@@ -633,6 +633,18 @@ def _copy_features_in_both_references(r1: EObject, r2: EObject) -> None:
     ``HashSet<StructuralVariation>``, cuja ordem de iteração já não é
     especificada por ele mesmo — ordem determinística aqui é uma escolha
     dentro do mesmo contrato, não uma divergência de fidelidade.
+
+    Parameters
+    ----------
+    r1, r2 : EObject
+        Duas ``Reference`` com a mesma representação
+        (:func:`_reference_representation`) — mutadas in-place: o
+        ``isFeaturedBy`` de ambas vira a mesma lista unida.
+
+    Returns
+    -------
+    None
+        O efeito é só a mutação de ``r1``/``r2``.
     """
     merged: list[EObject] = []
     for feature in (*r1.isFeaturedBy, *r2.isFeaturedBy):

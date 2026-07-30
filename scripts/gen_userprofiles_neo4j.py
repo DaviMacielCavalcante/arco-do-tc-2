@@ -86,7 +86,22 @@ CQL_FAVORITE = (
 
 
 def run_batches(session: Session, query: str, rows_iter: Iterator[dict[str, object]]) -> int:
-    """Executa `query` em lotes de BATCH linhas. Retorna o total enviado."""
+    """Executa `query` em lotes de BATCH linhas.
+
+    Parameters
+    ----------
+    session : neo4j.Session
+        Sessão já aberta; quem abre/fecha é o chamador.
+    query : str
+        Cypher parametrizado por `$rows` (uma das constantes `CQL_*`).
+    rows_iter : iterator of dict
+        Linhas a enviar, uma por vez — nunca materializado por completo.
+
+    Returns
+    -------
+    int
+        Total de linhas enviadas.
+    """
     buf: list[dict[str, object]] = []
     total = 0
     for row in rows_iter:
@@ -102,7 +117,18 @@ def run_batches(session: Session, query: str, rows_iter: Iterator[dict[str, obje
 
 
 def gen_movie_rows(n: int) -> Iterator[dict[str, object]]:
-    """Gera as `n` linhas de nó Movie."""
+    """Gera as `n` linhas de nó Movie.
+
+    Parameters
+    ----------
+    n : int
+        Quantidade de filmes a gerar.
+
+    Returns
+    -------
+    iterator of dict
+        Uma linha por filme (`id`, `title`, `year`, `genre`).
+    """
     for i in range(n):
         yield {
             "id": i,
@@ -113,7 +139,19 @@ def gen_movie_rows(n: int) -> Iterator[dict[str, object]]:
 
 
 def gen_user_rows(n: int) -> Iterator[dict[str, object]]:
-    """Nós User com address achatado e as 2 variações do artigo."""
+    """Nós User com address achatado e as 2 variações do artigo.
+
+    Parameters
+    ----------
+    n : int
+        Quantidade de users a gerar.
+
+    Returns
+    -------
+    iterator of dict
+        Uma linha por user; metade ganha `address_postcode` e `surname`
+        (as duas variações estruturais do dataset, ver docstring do módulo).
+    """
     for i in range(n):
         row: dict[str, object] = {
             "id": i,
@@ -137,6 +175,22 @@ def gen_edge_rows(n_user: int, n_movie: int, rels: int) -> Iterator[tuple[str, d
 
     ~15% dos users ficam isolados (sem nenhuma aresta) -> equivalente do array
     vazio. Rende tuplas ("W"/"F", row) em vez de dois geradores separados.
+
+    Parameters
+    ----------
+    n_user : int
+        Quantidade de users (mesmo valor passado a `gen_user_rows`).
+    n_movie : int
+        Quantidade de filmes (mesmo valor passado a `gen_movie_rows`) — usado
+        pra sortear o `mid` de cada aresta.
+    rels : int
+        Teto de arestas por user (o real é `randint(1, rels)` por tipo).
+
+    Returns
+    -------
+    iterator of tuple of (str, dict)
+        `("W", {uid, mid, stars})` para WATCHED, `("F", {uid, mid})` para
+        FAVORITE.
     """
     for i in range(n_user):
         isolated = random.random() < EMPTY_FRACTION
@@ -157,7 +211,20 @@ def gen_edge_rows(n_user: int, n_movie: int, rels: int) -> Iterator[tuple[str, d
 
 
 def run_edges(session: Session, n_user: int, n_movie: int, rels: int) -> tuple[int, int]:
-    """Roda WATCHED e FAVORITE em lotes separados, sem acumular tudo em memória."""
+    """Roda WATCHED e FAVORITE em lotes separados, sem acumular tudo em memória.
+
+    Parameters
+    ----------
+    session : neo4j.Session
+        Sessão já aberta; quem abre/fecha é o chamador.
+    n_user, n_movie, rels : int
+        Repassados direto a :func:`gen_edge_rows`.
+
+    Returns
+    -------
+    tuple of (int, int)
+        `(total de WATCHED, total de FAVORITE)` criados.
+    """
     w_buf: list[dict[str, object]] = []
     f_buf: list[dict[str, object]] = []
     n_w = n_f = 0
@@ -184,12 +251,25 @@ def run_edges(session: Session, n_user: int, n_movie: int, rels: int) -> tuple[i
 
 
 def drop_all(session: Session) -> None:
-    """Apaga o grafo em transações em lote (seguro para volumes grandes)."""
+    """Apaga o grafo em transações em lote (seguro para volumes grandes).
+
+    Parameters
+    ----------
+    session : neo4j.Session
+        Sessão já aberta; quem abre/fecha é o chamador.
+    """
     session.run("MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS").consume()
 
 
 def main() -> None:
-    """Parseia os argumentos e roda a geração do dataset ponta a ponta."""
+    """Parseia os argumentos de linha de comando e roda a geração ponta a ponta.
+
+    Lê `--size` (obrigatório) para escolher a escala, conecta no Neo4j via
+    `--uri`/`--user`/`--password`, opcionalmente apaga o grafo existente
+    (`--drop`) e gera Movies, Users e as arestas WATCHED/FAVORITE em lotes,
+    imprimindo o tempo de cada etapa. Sem parâmetros de função — lê
+    `sys.argv` via `argparse`.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", choices=list(SIZES), required=True)
     ap.add_argument("--uri", default="bolt://localhost:7687")
