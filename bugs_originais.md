@@ -34,6 +34,8 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
 - **`M6`** — achado **novo**, em `DefaultReferenceMatcher` (`.../process/util/`),
   levantado ao portar as estratégias EMF (Fase 1.3b) e **confirmado por
   execução real do Java**.
+- **`N1`** — achado **novo**, em `IdArchetypeMapping`, levantado na Fase 2.2 e
+  **confirmado com dado real** (Neo4j Aura).
 
 Todas as citações de linha referem-se ao `HEAD` do upstream, salvo indicação em
 contrário.
@@ -51,7 +53,7 @@ contrário.
 | #5 | `Neo4j2USchemaMain` | hardcode/caminho Hadoop | build | patch no oráculo |
 | **#6** | `Helpers.java:66` | `_id` assumido `ObjectId` | **crash** | corrigido por construção |
 | **#7** | `USchemaModelBuilder.java:255` | array vazio indexado | **crash** | corrigido por construção |
-| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **corretude** | replicado (fiel) |
+| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **corretude confirmada (dado real, Northwind)** | replicado (fiel) |
 | **C1** | `CompareReference.java:38-41` | só compara `isFeaturedBy[0]` | corretude | replicado (fiel) |
 | **C2** | `CompareReference.java:27` | recursão de `opposite` sem guarda | crash latente | replicado (fiel) |
 | **C3** | `CompareSchemaType.java:95-96` | `compareNames` sem guarda de nulo | crash latente | replicado (fiel) |
@@ -68,6 +70,7 @@ contrário.
 | **M4** | `DefaultStructuralVariationSorter.java:28,34,46` | comparadores devolvem só `-1`/`1`, nunca `0` — não são ordem total | **corretude** | replicado (fiel) |
 | **M5** | `DefaultEVariationMerger.java:132` | `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios | **crash confirmado (Java e porte)** | replicado (fiel) |
 | **M6** | `DefaultReferenceMatcher.java:34-50` | chave concatenada crua no regex, sem escape — metacaractere vira regex | **corretude confirmada (Java e porte)** | replicado (fiel) |
+| **N1** | `IdArchetypeMapping.java:60-62,100-104` | labels próprios ordenados, `refsTo` não — dois `EntityType` pro mesmo nó multi-label | **corretude confirmada (dado real)** | replicado (fiel) |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
@@ -185,6 +188,12 @@ ausência de combinação é o que reproduz o #8 fielmente.
 ao reaproveitar a variação, combinando `count`/`firstTimestamp`/
 `lastTimestamp` da ocorrência nova na existente. Muda contagens e janelas
 de tempo publicadas — requer dados de antes/depois antes de propor.
+
+**Confirmado com dado real (golden-master do Northwind, Fase 2.3):** rodando o
+pipeline real sobre os 17 arquivos do Northwind, `compare()` devolve
+`equivalent=True` com 15 divergências não-fatais, todas em entidades com
+campo array — assinatura consistente com o #8 (a ocorrência que "sobrevive"
+ao colapso depende da ordem de processamento, não da estrutura).
 
 ### Incerteza declarada, adjacente ao #8
 
@@ -980,6 +989,26 @@ compor cada padrão. Não deveria mudar nenhum casamento em nomes de entidade
 alfanuméricos comuns — só nomes com metacaracteres deixariam de casar de
 forma incidental. Ainda assim, requer dado antes/depois pra confirmar que
 nenhum dataset de referência depende do casamento incidental.
+
+---
+
+## N1 — labels próprios ordenados, `refsTo` não — dois `EntityType` pro mesmo nó
+
+**Sítio:** `IdArchetypeMapping.java:60-62` (labels próprios, ordenados) vs.
+`:100-104` (`addRelationships`/`targetLabels`, não ordenados).
+
+**Sintoma.** Um nó multi-label lido em seu próprio direito ordena os labels
+alfabeticamente pro nome do `EntityType`; o mesmo nó como `refsTo` de uma
+relação usa a ordem crua do `labels()` — gerando dois `EntityType`
+diferentes pro mesmo nó físico.
+
+**Confirmado com dado real (Neo4j Aura):** nó `:Zebra:Apple` referenciado
+por outro produziu `Apple_AND_Zebra` (variação real) e `Zebra_AND_Apple`
+(placeholder vazio) como dois `EntityType` distintos.
+
+**Decisão no porte: replicar** — `node_archetype` ordena, `_relationship_archetype` não, mesma assimetria do Java.
+
+**Correção upstream (candidata, não aplicada):** ordenar `targetLabels` em `addRelationships` também.
 
 ---
 

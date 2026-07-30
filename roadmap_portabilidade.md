@@ -64,10 +64,11 @@ Decisão central: **um único núcleo de inferência compartilhado** pelos dois 
 - Guice **desaparece** (wiring por construtor, que já existe); `abstractjson` **desaparece** (`dict`/`bson` nativo).
 - **Gate:** cada módulo reproduz o XMI-oráculo estruturalmente.
 
-### Fase 2 — Extratores em PySpark (MongoDB + Neo4j)
-- Portar a função de assinatura (`ArchetypeMapping` / `IdArchetypeMapping`) para funções Python puras; pipeline `rdd.map(...).reduceByKey(add)...` produzindo as triplas.
-- Conectores via `spark.jars.packages` (mongo-spark-connector 3.0.1; neo4j-spark-connector — validar versão, o legado conectou no 2026.05.0).
-- **Gate:** contagem de assinaturas idêntica ao Java; XMI final ≡ oráculo, para os dois paradigmas.
+### Fase 2 — Extratores (MongoDB + Neo4j) · ✅ concluída
+> **Correção de premissa:** conectores Spark oficiais viraram DataFrame-only;
+> lê-se direto via `pymongo`/`neo4j` (drivers nativos), Spark opcional e futuro.
+- Portar a função de assinatura (`Helpers`/`IdArchetypeMapping`) como funções Python puras — `extractors/mongo.py`, `extractors/neo4j.py` (+ núcleo de construção próprio do Neo4j, `extractors/neo4j_model.py`).
+- **Gate atingido:** contagens == Java; XMI ≡ oráculo nos dois paradigmas (Northwind e os 4 XMIs Neo4j), extração Neo4j também confirmada contra banco real.
 
 ### Fase 3 — Ponta a ponta + escala
 - Corretude: Northwind e Sakila.
@@ -87,11 +88,11 @@ O risco é **tempo**, não impossibilidade. Com a metacamada fora do caminho cr�
 
 ## 6. Resumo das fases
 
-| Fase | Entrega | Gate de aceite |
-|---|---|---|
-| 0 | PyEcore + round-trip + harness de equivalência + oráculo Java em Docker | round-trip do Northwind fecha |
-| 1 | núcleo `doc2uschema` em Python (inferência completa) | cada módulo ≡ XMI-oráculo (estrutural) |
-| 2 | extratores MongoDB + Neo4j em PySpark | contagens == Java; XMI ≡ oráculo |
-| 3 | ponta a ponta, corretude + escala, bugs corrigidos | Northwind/Sakila ok; tendência Tabela 4 reproduzida |
+| Fase | Entrega | Gate de aceite | Status |
+|---|---|---|---|
+| 0 | PyEcore + round-trip + harness de equivalência + oráculo Java em Docker | round-trip do Northwind fecha | ✅ |
+| 1 | núcleo `doc2uschema` em Python (inferência completa) | cada módulo ≡ XMI-oráculo (estrutural) | ✅ |
+| 2 | extratores MongoDB + Neo4j (driver nativo, não PySpark) | contagens == Java; XMI ≡ oráculo | ✅ |
+| 3 | ponta a ponta, corretude + escala, bugs corrigidos | Northwind/Sakila ok; tendência Tabela 4 reproduzida | pendente |
 
 **Sequência:** 0 → 1 → 2 → 3. Metacamada: trabalho futuro. Sirius/UI: fora de escopo (reconstruível em outra stack se desejado).
