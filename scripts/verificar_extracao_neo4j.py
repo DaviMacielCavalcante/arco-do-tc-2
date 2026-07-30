@@ -61,7 +61,7 @@ import sys
 try:
     from neo4j import GraphDatabase
 except ImportError:
-    sys.exit("Falta o driver neo4j. Rode: pip3 install neo4j --break-system-packages")
+    sys.exit("Falta o driver neo4j. Rode: uv sync")
 
 from uschema.extractors.neo4j import extract_database_archetype_counts
 from uschema.extractors.neo4j_model import build_uschema_from_archetypes
@@ -113,73 +113,76 @@ def main() -> None:
     args = ap.parse_args()
 
     auth = (args.user, args.password) if args.user else None
-    driver = GraphDatabase.driver(args.uri, auth=auth)
 
-    with driver.session() as session:
-        if args.drop:
-            print("Apagando grafo anterior...")
-            session.run(CQL_DROP).consume()
+    with GraphDatabase.driver(args.uri, auth=auth) as driver:
+        with driver.session() as session:
+            if args.drop:
+                print("Apagando grafo anterior...")
+                session.run(CQL_DROP).consume()
 
-        print("Semeando grafo de fumaça (User/Movie/WATCHED/FAVORITE)...")
-        session.run(CQL_SEED_SMOKE).consume()
+            print("Semeando grafo de fumaça (User/Movie/WATCHED/FAVORITE)...")
+            session.run(CQL_SEED_SMOKE).consume()
 
-        print("Semeando grafo da assimetria de labels (:Zebra:Apple)...")
-        session.run(CQL_SEED_LABEL_ASYMMETRY).consume()
+            print("Semeando grafo da assimetria de labels (:Zebra:Apple)...")
+            session.run(CQL_SEED_LABEL_ASYMMETRY).consume()
 
-    print("\n=== 1. Extração real (extract_database_archetype_counts) ===")
-    rows = extract_database_archetype_counts(driver)
-    print(f"{len(rows)} arquétipos distintos lidos.")
-    for row in rows:
-        archetype = row["archetype"]
-        if archetype["entity"] == "node":
-            print(f"  nó   labels={archetype['labels']!r:30} count={row['count']}")
-        else:
+        print("\n=== 1. Extração real (extract_database_archetype_counts) ===")
+        rows = extract_database_archetype_counts(driver)
+        print(f"{len(rows)} arquétipos distintos lidos.")
+        for row in rows:
+            archetype = row["archetype"]
+            if archetype["entity"] == "node":
+                print(f"  nó   labels={archetype['labels']!r:30} count={row['count']}")
+            else:
+                print(
+                    f"  rel  type={archetype['type']!r:15} "
+                    f"refsTo={archetype.get('refsTo')!r:20} count={row['count']}"
+                )
+
+        print("\n=== 2. Construção do USchema (build_uschema_from_archetypes) ===")
+        pkg = load_metamodel()
+        schema = build_uschema_from_archetypes(pkg, "verificacao_manual", rows)
+
+        print("EntityTypes construídos:")
+        for entity in schema.entities:
+            variation_counts = [v.count for v in entity.variations]
             print(
-                f"  rel  type={archetype['type']!r:15} "
-                f"refsTo={archetype.get('refsTo')!r:20} count={row['count']}"
+                f"  {entity.name!r:30} variações={len(entity.variations)} counts={variation_counts}"
             )
 
-    print("\n=== 2. Construção do USchema (build_uschema_from_archetypes) ===")
-    pkg = load_metamodel()
-    schema = build_uschema_from_archetypes(pkg, "verificacao_manual", rows)
+        print("RelationshipTypes construídos:")
+        for relationship in schema.relationships:
+            variation_counts = [v.count for v in relationship.variations]
+            print(
+                f"  {relationship.name!r:30} variações={len(relationship.variations)} "
+                f"counts={variation_counts}"
+            )
 
-    print("EntityTypes construídos:")
-    for entity in schema.entities:
-        variation_counts = [v.count for v in entity.variations]
-        print(f"  {entity.name!r:30} variações={len(entity.variations)} counts={variation_counts}")
+        print("\n=== 3. Veredito da assimetria de labels ===")
+        entity_names = {e.name for e in schema.entities}
+        apple_zebra_variants = {n for n in entity_names if "Apple" in n and "Zebra" in n}
+        print(f"EntityTypes envolvendo Apple/Zebra encontrados: {sorted(apple_zebra_variants)}")
 
-    print("RelationshipTypes construídos:")
-    for relationship in schema.relationships:
-        variation_counts = [v.count for v in relationship.variations]
-        print(
-            f"  {relationship.name!r:30} variações={len(relationship.variations)} "
-            f"counts={variation_counts}"
-        )
-
-    print("\n=== 3. Veredito da assimetria de labels ===")
-    entity_names = {e.name for e in schema.entities}
-    apple_zebra_variants = {n for n in entity_names if "Apple" in n and "Zebra" in n}
-    print(f"EntityTypes envolvendo Apple/Zebra encontrados: {sorted(apple_zebra_variants)}")
-
-    if len(apple_zebra_variants) >= 2:
-        print(
-            "BUG CONFIRMADO: mais de um EntityType pro mesmo nó físico "
-            "(:Zebra:Apple) -- a assimetria de ordenação de labels é real "
-            "e observável com dados reais. Ver extractors/neo4j.py e "
-            "todolist_fase2.md §2.2 pra registrar o achado como confirmado."
-        )
-    elif len(apple_zebra_variants) == 1:
-        print(
-            "BUG NÃO OBSERVADO: só um EntityType apareceu -- ou o Neo4j "
-            "real devolve labels() já ordenado (refutando a premissa do "
-            "oráculo de que precisava do .sorted() explícito), ou algo no "
-            "grafo semeado não disparou o caso. Vale investigar mais antes "
-            "de fechar o achado como refutado."
-        )
-    else:
-        print("Nenhum EntityType Apple/Zebra encontrado -- algo deu errado no seed ou na extração.")
-
-    driver.close()
+        if len(apple_zebra_variants) >= 2:
+            print(
+                "BUG CONFIRMADO: mais de um EntityType pro mesmo nó físico "
+                "(:Zebra:Apple) -- a assimetria de ordenação de labels é real "
+                "e observável com dados reais. Ver extractors/neo4j.py e "
+                "todolist_fase2.md §2.2 pra registrar o achado como confirmado."
+            )
+        elif len(apple_zebra_variants) == 1:
+            print(
+                "BUG NÃO OBSERVADO: só um EntityType apareceu -- ou o Neo4j "
+                "real devolve labels() já ordenado (refutando a premissa do "
+                "oráculo de que precisava do .sorted() explícito), ou algo no "
+                "grafo semeado não disparou o caso. Vale investigar mais antes "
+                "de fechar o achado como refutado."
+            )
+        else:
+            print(
+                "Nenhum EntityType Apple/Zebra encontrado -- algo deu errado no seed "
+                "ou na extração."
+            )
 
 
 if __name__ == "__main__":

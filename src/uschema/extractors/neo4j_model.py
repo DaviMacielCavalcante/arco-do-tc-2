@@ -626,8 +626,18 @@ def _compare_references(r1: EObject, r2: EObject) -> None:
 
 
 def _copy_features_in_both_references(r1: EObject, r2: EObject) -> None:
-    """Porte de ``copyFeaturesInBothReferences`` (``:144-154``)."""
-    merged = list({*r1.isFeaturedBy, *r2.isFeaturedBy})
+    """Porte de ``copyFeaturesInBothReferences`` (``:144-154``).
+
+    União por ordem de inserção (``r1`` primeiro, depois só o que é novo em
+    ``r2``), sem passar por ``set``/hash de identidade. O Java usa
+    ``HashSet<StructuralVariation>``, cuja ordem de iteração já não é
+    especificada por ele mesmo — ordem determinística aqui é uma escolha
+    dentro do mesmo contrato, não uma divergência de fidelidade.
+    """
+    merged: list[EObject] = []
+    for feature in (*r1.isFeaturedBy, *r2.isFeaturedBy):
+        if feature not in merged:
+            merged.append(feature)
 
     r1.isFeaturedBy.clear()
     r1.isFeaturedBy.extend(merged)

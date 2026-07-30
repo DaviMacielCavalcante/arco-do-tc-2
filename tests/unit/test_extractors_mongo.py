@@ -157,8 +157,9 @@ def test_simplify_tipo_nao_suportado_lanca_type_error() -> None:
     class _TipoQualquer:
         pass
 
+    valor = _TipoQualquer()
     with pytest.raises(TypeError, match="not supported"):
-        simplify({"campo": _TipoQualquer()})
+        simplify({"campo": valor})
 
 
 # --- generate_document_pair (Helpers.java:64-70, com #6 corrigido) ----------

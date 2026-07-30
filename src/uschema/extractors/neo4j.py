@@ -556,11 +556,11 @@ def extract_database_archetype_counts(
     if sampling_rate <= 0 or sampling_rate > 1:
         raise ValueError(f"Sampling rate <= 0 or > 1, Value: {sampling_rate}")
 
-    rows: list[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]] = []
-    for labels in _distinct_label_combinations(driver, database):
-        rows.extend(_read_label_combination(driver, database, labels, sampling_rate))
+    def _rows() -> Iterator[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]]:
+        for labels in _distinct_label_combinations(driver, database):
+            yield from _read_label_combination(driver, database, labels, sampling_rate)
 
-    return extract_archetype_counts(rows)
+    return extract_archetype_counts(_rows())
 
 
 def _distinct_label_combinations(driver: Driver, database: str | None) -> list[list[str]]:
