@@ -3,6 +3,25 @@
 **Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Resultados de referência:** `resultado_mongodb.md`, `resultado_neo4j.md`, `resultado_bug8_subcontagem_user.md`
 **Entregável:** validação ponta a ponta + escala · **Pré-requisito:** Fases 1 e 2 com gates fechados
 
+> ⚠️ **Premissas corrigidas pelas Fases 1 e 2 — ler antes de executar a fase.**
+>
+> - **Não há "log do Spark" para ler.** A 2.0 decidiu leitura por **driver
+>   nativo** (`pymongo`/`neo4j`), pura-Python; o tempo de inferência tem de ser
+>   medido **em processo** (cronometrar o pipeline `extract_* → BuildUSchema`),
+>   não extraído de log de executor. Spark segue como paralelizador opcional.
+> - **O Northwind já fechou** na Fase 2.3 (`equivalent=True`, 15 divergências
+>   não-fatais do #8) — a 3.1 herda o resultado; o que falta dele é
+>   **reprodutibilidade** (os JSONs não foram vendorizados, por decisão).
+> - **`scripts/gen_userprofiles.py` (Mongo, Rotas A/B) ainda não existe** no
+>   repo — só o do grafo. É pré-requisito da 3.2.
+> - **Referências que não estão neste repositório:** `roteiro_experimental.md`,
+>   `resultado_mongodb.md`, `resultado_neo4j.md`,
+>   `resultado_bug8_subcontagem_user.md`, `analise_ferramenta_uschema.md`. Os
+>   números-alvo que importam estão transcritos abaixo; o formato dos CSVs (§3.4)
+>   precisa ser redefinido aqui ou o documento, recuperado.
+> - **O Neo4j não passa pelo núcleo da Fase 1** (achado da 2.2): a bateria do
+>   grafo roda `extractors/neo4j.py` + `extractors/neo4j_model.py`.
+
 ## Objetivo
 
 Validar o porte completo de ponta a ponta — extrator PySpark → núcleo de inferência → PyEcore → XMI — em **corretude** (datasets reais) e **escala** (datasets sintéticos), confirmando que os bugs do código original ficam tratados **por construção**. É a fase de avaliação experimental do TCC.
@@ -16,16 +35,16 @@ Validar o porte completo de ponta a ponta — extrator PySpark → núcleo de in
 - **19 `EntityType`** (17 raiz + 2 não-raiz: `_id` e `Detail`).
 - **`Aggregate` aninhado**: `Detail` ligada a `Orders`/`Purchase_orders` por `Aggregate` (`upperBound="-1"`, `optional="true"`).
 - **Variação estrutural** sobre o aninhado.
-- **Contagens corretas nas 17 coleções** (ver 3.3 / bug #8).
+- **Contagens iguais às do oráculo nas 17 coleções** — o que inclui a subcontagem do #8 em `orders`/`products`/`purchase_orders`, replicada, **não** corrigida (ver 3.3).
 
-**Tarefas:** rodar o pipeline Python sobre o Northwind; comparar o XMI com o oráculo pelo harness; diagnosticar e fechar divergências.
+**Tarefas:** rodar o pipeline Python sobre o Northwind; comparar o XMI com o oráculo pelo harness; diagnosticar e fechar divergências. ✅ **Já executado na Fase 2.3**: `equivalent=True` com 15 divergências não-fatais, todas na assinatura do #8.
 
 ### Sakila (segundo dataset real)
 Replicar o protocolo (documento e/ou grafo). Serve de segundo ponto de corretude, reduzindo o risco de *overfitting* ao Northwind.
 
 ## 3.2 Escala (datasets sintéticos)
 
-Reproduzir o experimento de escala do artigo (Tabelas 3/4) **em PySpark**, confirmando que o porte preserva a propriedade de crescimento.
+Reproduzir o experimento de escala do artigo (Tabelas 3/4), confirmando que o porte preserva a propriedade de crescimento. (Em **pura-Python** — a 2.0 dispensou o Spark; ver o banner no topo.)
 
 **Geradores (já existentes):** `gen_userprofiles.py` (MongoDB, Rotas A/B) e `gen_userprofiles_neo4j.py` (grafo). Quatro tamanhos: 100k/200k/400k/800k `User` (50k/100k/200k/400k `Movie`).
 
@@ -35,29 +54,44 @@ Reproduzir o experimento de escala do artigo (Tabelas 3/4) **em PySpark**, confi
 **Neo4j — grafo:** `address` achatado; `watchedMovies`/`favoriteMovies` como arestas `WATCHED {stars}`/`FAVORITE`; ~15% users isolados. Referência i9: inferência ~3,83→34,86 s (a geração do grafo, ~180 s no maior, é mais cara que a inferência — assimetria do paradigma).
 
 **Tarefas:**
-- [ ] Rodar o porte nos quatro tamanhos, Rotas A/B (Mongo) e grafo (Neo4j); ler o tempo de inferência do log do Spark.
-- [ ] Confirmar **leitura integral** (soma dos `count` = volume gerado).
-- [ ] Comparar a **tendência** de crescimento com a do oráculo (não o tempo absoluto — PySpark vs. JVM diferem; o que importa é a curva).
-- [ ] Sem `OutOfMemoryError` (ajustar heap/memória do executor se preciso).
+- [ ] Rodar o porte nos quatro tamanhos, Rotas A/B (Mongo) e grafo (Neo4j); **cronometrar em processo** (não há log de executor — ver o banner no topo).
+- [ ] Confirmar **leitura integral** (soma dos `count` = volume gerado) **no grafo**, onde ela é esperada (núcleo próprio, o #8 não passa por lá). No **documento** ela **não** fecha por causa do #8 replicado: medir a diferença e documentá-la como resultado, não como falha.
+- [ ] Comparar a **tendência** de crescimento com a do oráculo (não o tempo absoluto — Python vs. JVM diferem; o que importa é a curva).
+- [ ] Sem estouro de memória (`MemoryError`). Se ocorrer, `mapPartitions` entra sem reescrever a lógica — ver 2.0.
 
-## 3.3 Bugs corrigidos por construção (regressão + escala)
+## 3.3 Bugs: #6/#7 por construção, #8 replicado (regressão + escala)
 
-O porte trata nativamente os três casos que no Java exigiram patch. Cada um vira **teste de regressão** com dataset mínimo dedicado **e** é exercitado em escala.
+> ⚠️ **Correção desta seção (31/07/2026).** A versão anterior listava o **#8**
+> entre os "corrigidos por construção" e fixava números-alvo *com a correção*
+> (50/50 no User Profiles, 17/17 no Northwind). **Isso contradizia a decisão de
+> fidelidade do projeto** e foi removido: `bugs_originais.md` §#8 registra
+> **"Decisão no porte: replicar"**, e `oracle/patches/` não tem um `0008` — nem
+> o oráculo corrige. O porte **reproduz** a subcontagem; não há alvo corrigido
+> nesta fase.
 
-| Bug | Cenário | Critério no porte |
-|---|---|---|
-| **#6** `_id` inteiro | origem relacional (Northwind, Rota B) | não assume `ObjectId`; roda os 800k da Rota B sem `ClassCastException` |
-| **#7** array vazio | ~15% dos docs na Rota B | não indexa elemento inexistente; roda sem `IndexOutOfBounds` |
-| **#8** contagem sob array de tamanho variável | `watchedMovies`/`favoriteMovies`; `details[]`, `supplier_ids[]` no Northwind | a soma dos `count` por entidade = volume real |
+São **dois** os casos que o Java corrigiu por patch e o porte trata nativamente
+— o terceiro é replicado de propósito. Cada um vira **teste de regressão** com
+dataset mínimo dedicado **e** é exercitado em escala.
 
-**Números-alvo (com a correção do #8):**
-- **User Profiles:** divisão **50/50** entre as duas variações de `User` (Small 50.000+50.000 = 100.000; … Larger 400.000+400.000 = 800.000). *Sem* a correção, capturava-se só ~2,6%–31% (artefato do bug).
-- **Northwind:** as **17 coleções** batem (com o bug, só 14 batiam; as 3 que erravam — `orders`, `products`, `purchase_orders` — eram exatamente as com campo array de tamanho variável).
+| Bug | No oráculo | Cenário | Critério no porte |
+|---|---|---|---|
+| **#6** `_id` inteiro | patch `0006` | origem relacional (Northwind, Rota B) | não assume `ObjectId`; roda os 800k da Rota B sem `ClassCastException`/`TypeError` |
+| **#7** array vazio | patch `0007` | ~15% dos docs na Rota B | não indexa elemento inexistente; roda sem `IndexOutOfBounds`/`IndexError` |
+| **#8** contagem sob array de tamanho variável | **sem patch** | `watchedMovies`/`favoriteMovies`; `details[]`, `supplier_ids[]` no Northwind | **replicar**: a subcontagem do porte casa com a do oráculo (é o que mantém `compare()` equivalente) |
+
+**O que o #8 custa, para contexto — não é alvo do porte.** No experimento
+*original*, com a correção aplicada, o User Profiles dividia 50/50 entre as duas
+variações de `User` e as 17 coleções do Northwind batiam (contra 14 sem a
+correção; as 3 que erravam — `orders`, `products`, `purchase_orders` — eram
+exatamente as com campo array de tamanho variável). **O porte não persegue esses
+números**: perseguí-los quebraria a equivalência com o oráculo, que é o critério
+da fase. Medir a correção exigiria dados antes/depois que esta fase não produz —
+fica como proposta upstream (`bugs_originais.md`, "contribuições propostas").
 
 **Tarefas:**
 - [ ] Teste de regressão #6 (dataset com `_id` inteiro), #7 (dataset com `[]`), #8 (dataset com array de tamanho variável).
-- [ ] Confirmar os números-alvo acima no porte (50/50 no User Profiles; 17/17 no Northwind).
-- [ ] Documentar como capítulo de reprodutibilidade: o porte corrige por design o que o original corrigia por patch.
+- [ ] Medir e **documentar** a subcontagem do #8 no porte nos 4 tamanhos, mostrando que casa com a do oráculo.
+- [ ] Documentar como capítulo de reprodutibilidade: o porte corrige **#6 e #7** por design onde o original precisou de patch — e replica o **#8** deliberadamente, porque um porte que melhora o original não pode ser validado contra ele.
 
 ## 3.4 Coleta e análise
 
@@ -66,8 +100,9 @@ Conforme `roteiro_experimental.md` §6–7: CSVs de equivalência (por dataset/p
 ## Gate de aceite da Fase 3
 
 - Northwind e Sakila: equivalência estrutural com o oráculo (corretude).
-- Escala: tendência de crescimento reproduzida nos quatro tamanhos, leitura integral confirmada, sem OOM.
-- Bugs #6/#7/#8: tratados por construção, com os números-alvo batendo e testes de regressão verdes.
+- Escala: tendência de crescimento reproduzida nos quatro tamanhos, leitura integral confirmada **no grafo**, sem estouro de memória.
+- Bugs **#6/#7**: tratados por construção (rodam sem patch em 800k), com testes de regressão verdes.
+- Bug **#8**: subcontagem **replicada** e medida, casando com a do oráculo. Um porte que aqui "acertasse" o volume real estaria **fora** do gate, não dentro dele.
 
 ## Entregáveis
 
@@ -75,4 +110,4 @@ Scripts de execução das baterias (corretude + escala), suíte de regressão do
 
 ## Riscos da fase
 
-PySpark mais lento que a JVM em RDDs (irrelevante — H1 é sobre **tendência**, não tempo absoluto; documentar); custo de **geração** do grafo Neo4j dominando o tempo de bateria (planejar; é da materialização, não da inferência); divergência estrutural residual em dataset real (o harness aponta a categoria; voltar à Fase 1/2 conforme o módulo).
+Python mais lento que a JVM (irrelevante — H1 é sobre **tendência**, não tempo absoluto; documentar); custo de **geração** do grafo Neo4j dominando o tempo de bateria (planejar; é da materialização, não da inferência); divergência estrutural residual em dataset real (o harness aponta a categoria; voltar à Fase 1/2 conforme o módulo); **perfil de memória** diferente do oráculo, já que a leitura é pura-Python em processo e não distribuída em executores.

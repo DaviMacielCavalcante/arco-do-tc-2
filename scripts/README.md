@@ -21,11 +21,20 @@ Quatro tamanhos: 100k / 200k / 400k / 800k `User` (50k / 100k / 200k / 400k `Mov
 
 - Corretude: Northwind, Sakila (documento e/ou grafo) → comparar com o oráculo
   via `uschema.validation`.
-- Escala: rodar os quatro tamanhos, ler o tempo de inferência do log do Spark,
+- Escala: rodar os quatro tamanhos, **cronometrar a inferência em processo**
+  (a leitura é por driver nativo desde a 2.0 — não há log de executor Spark),
   confirmar leitura integral (soma dos `count` = volume gerado), comparar a
   **tendência** (não o tempo absoluto).
 
-## Números-alvo (com a correção do #8)
+## Números-alvo
 
-- User Profiles: divisão **50/50** entre as duas variações de `User`.
-- Northwind: as **17 coleções** batem (com o bug, só 14 batiam).
+O critério é **casar com o oráculo**, não com o volume real — o **#8** é
+replicado de propósito (`bugs_originais.md` §#8), e o oráculo também não o
+corrige (não há patch `0008`).
+
+- **Grafo (User Profiles):** soma dos `count` de `User` = volume gerado — 100k/200k/400k/800k. Fecha exato; o núcleo do Neo4j é próprio e o #8 não passa por ele (verificado nos 4 XMIs-oráculo).
+- **Documento (User Profiles, Northwind):** a soma **não** fecha, e não deve. Medir a subcontagem e mostrar que é a mesma do oráculo. No Northwind isso aparece como as 15 divergências **não-fatais** da Fase 2.3, em `orders`/`products`/`purchase_orders`.
+
+> O 50/50 do User Profiles e o "17 de 17" do Northwind são resultados do
+> experimento **original com a correção do #8** — contexto do que o bug custa,
+> **não** alvo deste porte. Persegui-los quebraria a equivalência.

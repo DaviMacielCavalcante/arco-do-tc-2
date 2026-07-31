@@ -6,7 +6,9 @@
 > ⚠️ **Guia desatualizado — fonte de verdade agora é `todolist_fase2.md`.**
 > §2.1 referencia o extrator MongoDB errado (`ArchetypeMapping`, não
 > `Helpers`); a leitura é via driver nativo (`pymongo`/`neo4j`), não conector
-> Spark.
+> Spark. **As caixas `[ ]` abaixo estão congeladas no estado do plano
+> original** — a Fase 2 foi concluída e o status real (com as correções de
+> premissa) está no `todolist_fase2.md`.
 
 ## Objetivo
 

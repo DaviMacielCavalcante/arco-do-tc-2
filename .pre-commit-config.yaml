@@ -50,20 +50,18 @@ repos:
         require_serial: true
 
       # Subconjunto rápido a cada commit: exclui Spark/integração.
-      # A guarda tolera o exit 5 (nenhum teste coletado) enquanto a suíte está
-      # vazia; passa a valer sozinho quando o primeiro teste cair.
       - id: pytest-fast
         name: pytest (rápido — sem spark/integration)
-        entry: bash -c 'set +e; uv run pytest -m "not spark and not integration" -q; c=$?; [ "$c" -eq 0 ] || [ "$c" -eq 5 ]'
+        entry: uv run pytest -m "not spark and not integration" -q
         language: system
         pass_filenames: false
         always_run: true
         require_serial: true
 
-      # Suíte completa antes do push (inclui os testes de Spark, mais lentos).
+      # Suíte completa antes do push (inclui os testes de Spark, se houver).
       - id: pytest-full
         name: pytest (suíte completa)
-        entry: bash -c 'set +e; uv run pytest; c=$?; [ "$c" -eq 0 ] || [ "$c" -eq 5 ]'
+        entry: uv run pytest
         language: system
         pass_filenames: false
         always_run: true

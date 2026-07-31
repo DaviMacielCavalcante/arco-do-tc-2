@@ -29,19 +29,30 @@ Layout `src/` (pacote `uschema`). Cada subpacote mapeia uma fase do roadmap:
 - `src/uschema/naming/` — **Fase 0.6**: Inflector fiel ao Java (capitalização/pluralização dos nomes de entidade).
 - `src/uschema/validation/` — **Fase 0.3**: harness de equivalência estrutural, espelhando `USchemaCompareMain`.
 - `src/uschema/intermediate/` — **Fase 1.1**: modelo `raw` (Composite) + `metadata`, como `dataclasses`. O pacote `firsto` do Java **não** foi portado: é código morto (nenhuma referência fora do próprio pacote).
-- `src/uschema/inference/` — **Fase 1.2–1.4**: núcleo `doc2uschema` (`SchemaInference`, `strategies`, `USchemaModelBuilder`).
-- `src/uschema/extractors/` — **Fase 2**: extratores PySpark (`mongo`, `neo4j`) + `triple` (o contrato de costura, **Fase 1.0**).
+- `src/uschema/inference/` — **Fase 1.2–1.7**: núcleo `doc2uschema` (`schema_inference`, `strategies`, `builder`), o `m2m/USchemaToDocumentDb` (1.4b) e a fachada `build_uschema` (1.7).
+- `src/uschema/extractors/` — **Fase 2**: extratores por **driver nativo** (`mongo` via `pymongo`, `neo4j` via `neo4j`; PySpark ficou como paralelizador futuro, ver 2.0) + `triple` (o contrato de costura, **Fase 1.0**) + `neo4j_model` (núcleo de construção **próprio do Neo4j**, ver a nota abaixo).
 
 Fora do pacote: `resources/` (`.ecore` + XMIs de referência), `oracle/`
 (Dockerfile + `patches/`), `scripts/` (baterias de escala + geradores),
 `tests/` (`unit/`, `regression/`, `datasets/`).
 
-**Estado real do pacote** (mantenha esta lista honesta ao avançar): existem
-`metamodel/`, `naming/`, `validation/`, `extractors/triple.py` e
-`intermediate/` (`raw.py` + `metadata.py`). Só `inference/` continua com apenas
-o `__init__.py` — **não** há stubs com `NotImplementedError`, e `cli.py` +
-`[project.scripts]` ainda não existem (entram na 1.7). Implemente bottom-up,
-test-alongside (ver `fase1_nucleo_inferencia.md`).
+**Estado real do pacote** (mantenha esta lista honesta ao avançar): **Fases 0, 1
+e 2 fechadas** — todos os subpacotes acima estão implementados e cobertos por
+teste; **não** há stubs com `NotImplementedError`. O que falta é a **Fase 3**
+(ponta a ponta + escala): ver `fase3_validacao_escala.md` e `scripts/README.md`.
+
+Duas ausências reais, para não serem confundidas com lacuna de porte:
+
+- **`cli.py` + `[project.scripts]` não existem.** Estavam previstos para a 1.7,
+  que fechou sem eles; hoje o pipeline é chamado por API
+  (`inference.build_uschema.BuildUSchema`) e pelos scripts de `scripts/`. Dívida
+  em aberto, sem fase atribuída — o primeiro consumidor natural são as baterias
+  da Fase 3.
+- **`scripts/gen_userprofiles.py`** (gerador MongoDB, Rotas A/B) ainda não foi
+  trazido do repositório original; só o do grafo (`gen_userprofiles_neo4j.py`)
+  está aqui. Bloqueia a bateria de escala do paradigma documento.
+
+Implemente bottom-up, test-alongside (ver `fase1_nucleo_inferencia.md`).
 
 ## Tooling
 
@@ -61,9 +72,9 @@ Comandos comuns:
 ## Key dependencies
 
 - **pyecore** — metamodelo/serialização: carrega `uschema.ecore` e lê/grava XMI (substitui Factory/Package/Switch do EMF via API reflexiva). **Não distribui `py.typed`** — ver o aviso sobre `mypy` em *Coding conventions*.
-- **pyspark** — extração distribuída (Fase 2); só RDD de baixo nível (`map`/`reduceByKey`/`flatMap`), sem DataFrame SQL. **Fixa o teto de Python em 3.12.**
+- **pyspark** — dependência declarada, **hoje não usada em runtime**. A Fase 2.0 decidiu ler por driver nativo: nenhum conector oficial (Mongo/Neo4j) expõe mais a API RDD que o oráculo usa — viraram DataFrame-only. O `reduce_pairs`/`build_triples` combina por `(min, max, soma)`, comutativo e associativo, então `mapPartitions` entra depois sem reescrever nada. **Fixa o teto de Python em 3.12.**
 - **pymongo** — leitura de `dict`/`bson` do MongoDB (o `_id` é lido genericamente — bug #6).
-- **neo4j** — driver do paradigma grafo (validar a versão do connector Spark contra o Neo4j-alvo).
+- **neo4j** — driver do paradigma grafo (`GraphDatabase.driver(...).execute_query(...)`; o conector Spark não é usado — ver acima).
 - **pydantic** — validação/esquemas de configuração.
 - **loguru** — logging estruturado.
 
@@ -143,12 +154,14 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 **Markers do pytest** (registrados no `pyproject.toml`, `--strict-markers`
 ativo): marque cada teste como `unit`, `spark` ou `integration`. Só os `unit`
 (rápidos, puros) rodam no pre-commit; `spark`/`integration` ficam para pre-push
-e CI. Testes de extrator PySpark → `@pytest.mark.spark`.
+e CI. Hoje **toda a suíte é `unit`** — os extratores da Fase 2 são pura-Python
+(driver nativo), então nenhum teste é `spark`. Se o Spark entrar como
+paralelizador, os testes dele levam `@pytest.mark.spark`.
 
-Não relaxe essas checagens para "passar o commit" — corrija o código. Enquanto
-a suíte está vazia, os hooks de teste e o CI toleram o "nenhum teste coletado"
-(exit 5); **remova essa tolerância no CI assim que o primeiro teste existir**,
-senão uma suíte quebrada/ausente passa despercebida.
+Não relaxe essas checagens para "passar o commit" — corrija o código. A
+tolerância ao "nenhum teste coletado" (exit 5) que existia enquanto a suíte
+estava vazia **foi removida** do CI e dos hooks — uma suíte ausente ou não
+coletada agora derruba o gate, que é o ponto.
 
 ### Fluxo de PR (branch `main` protegida)
 
@@ -192,5 +205,7 @@ SonarQube Cloud via <https://sonarcloud.io>).
 - **Bugs corrigidos por construção** (o original corrigia por patch): **#6** `_id` genérico (não assumir `ObjectId`), **#7** array vazio (checar `len==0` antes de `inners[0]`). Onde um teste JUnit codificava o bug, afirme o valor **corrigido**. **#8 não entra nessa lista** — é replicado fielmente.
 - **O Inflector é reimplementação, não lib.** Nenhuma lib Python (`inflection`, `inflect`) reproduz o Inflector do ModeShape que o Java vendoriza: as regras são uma lista **ordenada** com semântica de inserção-na-frente, e a saída depende dessa ordem (`pluralize("human")` → `"humen"`). Trocar por lib renomearia `EntityType` e quebraria a equivalência. Não reintroduza a dependência.
 - **O `abstractjson` (Bridge Jackson/Gson) desaparece por construção** (Fase 1.5). As ~25 classes de `util/abstractjson/` existem só para abstrair duas libs de JSON do Java; a entrada do porte já é `dict`/`list` nativo, então não há o que abstrair. A **única** decisão de tipo do Bridge é o `IAJIdentify` (7 predicados), e o único predicado que o JSON nativo não distingue sozinho — `isObjectId` — está resolvido na 1.0 (`extractors/triple.py::classify`, sentinela `value == "oid"`). Remoção **estrutural** deliberada, sem perda de comportamento observável — não reintroduzir "por completude". Detalhe e verificação em `bugs_originais.md` ("O que não é defeito").
-- **Fora de escopo** (não portar): backends `cassandra`/`hbase`/`redis`/`sql`; OCL (ausente no metamodelo); codegen EMF; editor Sirius (UI). A **metacamada** é trabalho futuro.
+- **O Neo4j não passa pelo núcleo da Fase 1** (achado da 2.2, corrige a spec). `Neo4j2USchema.process` chama `Json2USchemaModel.processArchetypes`, que usa quatro classes próprias do `neo4j2uschema` — um **segundo** núcleo de construção de `USchema`. Portado fiel em `extractors/neo4j_model.py`: o grafo **não** produz `SchemaTriple` nem chama `BuildUSchema`. Os dois paradigmas convergem no metamodelo PyEcore, não no código de inferência. Encaixar o Neo4j no `BuildUSchema` "por unificação" quebraria a equivalência.
+- **Há dois extratores MongoDB no original, e o certo é o `Helpers`** (achado da 2.1). `mongodb2uschema` (caminho `Helpers`) produz a tripla e alimenta o nosso núcleo — é o que gera os XMIs de referência. `mongodb2uschema.spark` (`ArchetypeMapping`/`ModelDirector`) tem construtor próprio e **não** foi portado: duplicaria a Fase 1.
+- **Fora de escopo** (não portar): backends `cassandra`/`hbase`/`redis`/`sql`; OCL (ausente no metamodelo); codegen EMF; editor Sirius (UI); `mongodb2uschema.spark`/`ModelDirector` (acima). A **metacamada** é trabalho futuro.
 - **Paralelismo do time:** a Fase 1 (núcleo de inferência) e a Fase 2 (extratores) avançam em paralelo e se encontram no formato da tripla (`extractors/triple.py`); o trabalho é compartilhado entre os autores, sem dono fixo por fase.

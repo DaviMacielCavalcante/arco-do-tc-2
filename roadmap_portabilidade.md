@@ -50,13 +50,15 @@ Decisão central: **um único núcleo de inferência compartilhado** pelos dois 
 
 ## 4. Fases
 
-### Fase 0 — Fundação + oráculo · prioridade imediata
+### Fase 0 — Fundação + oráculo · ✅ concluída
 1. PyEcore carrega `uschema.ecore`; instanciar `EntityType`, `StructuralVariation`, `Aggregate`, `Attribute`, `Reference`.
 2. Round-trip XMI: ler `model_northwind.xmi`, reserializar, validar.
 3. **Harness de equivalência estrutural** (não textual): compara conjuntos de entidades, variações e contagens entre dois XMIs. É o critério de aceite de todas as fases seguintes.
 4. **Docker como andaime:** a ferramenta Java patcheada, isolada em imagem (JDK 8 + Spark + patches #6/#7), serve só para **gerar os XMIs de referência** de forma reproduzível. Não é a entrega — é o gerador do oráculo.
 
-### Fase 1 — Núcleo de inferência (`doc2uschema`) · a espinha
+### Fase 1 — Núcleo de inferência (`doc2uschema`) · a espinha · ✅ concluída
+> O golden-master do **Northwind**, único item que atravessou a fase, fechou na
+> **2.3** (`equivalent=True`, 15 não-fatais do #8).
 - Modelos intermediários `raw`/`firsto` → `dataclasses` (Composite vira árvore recursiva).
 - `SchemaInference.infer`: recursão JSON → `SchemaComponent`; **igualdade estrutural** e **ordenação de campos** replicadas fielmente (são o que torna o porte verificável); objetos aninhados viram entidades internas.
 - Estratégias: `joiner` (une aliases), `merger` (funde variações equivalentes), `optionalTagger`/`featureAnalyzer` (opcionalidade entre variações), `referenceMatcher` (+`creator`; detecção de `Reference` por id, só entidades com variação raiz), `varSorter` (ordem determinística).
