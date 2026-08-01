@@ -82,7 +82,7 @@ Comandos comuns:
 
 - **Type hints obrigatórios** em toda assinatura. `mypy` roda estrito; código novo passa sem `# type: ignore` salvo necessidade real.
 
-> ⚠️ **`mypy` não protege nada que atravesse a fronteira do PyEcore.** A lib não
+> **`mypy` não protege nada que atravesse a fronteira do PyEcore.** A lib não
 > distribui `py.typed`, então `EObject` é `Any`: qualquer atributo "existe", com
 > qualquer tipo, e casa com qualquer assinatura. Na Fase 0.3, **seis** erros
 > passaram por `mypy --strict` e só apareceram em execução — três typos

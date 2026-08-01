@@ -41,4 +41,4 @@ pull_request_rules:
       comment:
         message: >
           @{{author}} este PR está com conflito com a `main` e precisa de
-          rebase antes de entrar na fila de merge. 🙏
+          rebase antes de entrar na fila de merge.

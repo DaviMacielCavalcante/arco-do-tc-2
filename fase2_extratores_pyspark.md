@@ -3,7 +3,7 @@
 **Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Base técnica:** `analise_ferramenta_uschema.md` (§3.3–3.4)
 **Entregável:** extratores PySpark (MongoDB + Neo4j) · **Pré-requisito:** Fase 0 (oráculo + harness); integra com a Fase 1 pelo formato da tripla
 
-> ⚠️ **Guia desatualizado — fonte de verdade agora é `todolist_fase2.md`.**
+> **Guia desatualizado — fonte de verdade agora é `todolist_fase2.md`.**
 > §2.1 referencia o extrator MongoDB errado (`ArchetypeMapping`, não
 > `Helpers`); a leitura é via driver nativo (`pymongo`/`neo4j`), não conector
 > Spark. **As caixas `[ ]` abaixo estão congeladas no estado do plano

@@ -14,7 +14,7 @@
 
 ---
 
-## 0.0 — Fundação do repositório Python  ✅ *(scaffold pronto)*
+## 0.0 — Fundação do repositório Python  *(scaffold pronto)*
 
 > Estrutura montada com `uv`; **sem implementação** (o código dos módulos é dos autores). Serve de esqueleto para as tarefas 0.1–0.6.
 
@@ -89,14 +89,14 @@
 > **`InflectorTest`** não depende da inferência nem de banco — fecha junto com a
 > **0.6**, e está listado lá.
 
-> ⚠️ **Dois achados do inventário contrariam a suposição do roadmap** (detalhe em `INVENTARIO.md`):
+> **Dois achados do inventário contrariam a suposição do roadmap** (detalhe em `INVENTARIO.md`):
 >
 > 1. **Metade dos "testes de regressão" exige um MongoDB de pé.** `CountTimestampTest`, `ObjectIdTest`, `TypesTest` e `SimplifyAggrTest` injetam o JSON no banco e rodam o **map-reduce no Mongo** antes de inferir. Não são a camada barata que o roadmap supõe — são integração disfarçada.
 > 2. **Dá para portá-los sem banco, cortando na tripla.** A saída do map-reduce (`{schema, count, firstTimestamp, lastTimestamp}`) **é** o contrato de `extractors/triple.py`. Congelada como fixture (gerada uma vez pelo oráculo da 0.5), a inferência é testada em unidade. É o que os testes puros do `doc2uschema` já fazem — o `OptionalTest` traz esse JSON escrito à mão dentro da classe.
 >
 > Também: os 17 arquivos de `documents/.../examples/tests/` **não são testes** (16 têm corpo vazio, o 17º é um *runner* sem asserção), e o `automated/AutoTest1` só afirma `assertEquals(true, true)`. Não portar.
 
-> ⚠️ **Testes que codificam o bug.** Onde você corrigiu um bug (#6/#7/#8), porte a *estrutura* do teste mas afirme o valor **corrigido**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (só aparece com array de tamanho variável) — a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
+> **Testes que codificam o bug.** Onde você corrigiu um bug (#6/#7/#8), porte a *estrutura* do teste mas afirme o valor **corrigido**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (só aparece com array de tamanho variável) — a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
 
 ---
 
@@ -145,7 +145,7 @@
 
 ---
 
-## ✅ Gate de aceite da Fase 0
+## Gate de aceite da Fase 0
 
 - [x] Round-trip do `model_northwind.xmi` fecha (recarrega estruturalmente idêntico).
 - [x] Harness de equivalência funcionando (acerta A==A e detecta divergência injetada), com a semântica espelhada do `USchemaCompareMain`.

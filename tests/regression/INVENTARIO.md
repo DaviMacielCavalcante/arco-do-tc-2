@@ -63,7 +63,7 @@ O custo: a fixture precisa ser **gerada uma vez** pelo oráculo (é para isso qu
 0.5/Docker existe), ou reconstruída à mão a partir do `testSources/*.json`
 correspondente. Gerar pelo oráculo é mais fiel e mais barato.
 
-> ⚠️ Isso **não** dispensa um teste ponta a ponta com banco — ele só sai da camada
+> Isso **não** dispensa um teste ponta a ponta com banco — ele só sai da camada
 > de regressão e vai para a Fase 3 (`@pytest.mark.integration`), onde já mora o
 > golden-master de dataset.
 
@@ -80,22 +80,22 @@ Fase 1.
 |---|---|---|---|
 | `doc2uschema/…/regression/InflectorTest` | 394 | `naming.inflector` (**0.6**) | pluralize/singularize/camelCase — **desbloqueado hoje** |
 | `doc2uschema/…/regression/OptionalTest` | 72 | `inference.strategies` (1.3b) + pipeline (1.2/1.4) | `optional` de atributo entre variações — **valida o `FeatureAnalyzer`** |
-| `doc2uschema/…/regression/RemovePMapTest` | 141 | ✅ **`m2m.USchemaToDocumentDb` (1.4b, portado)** — ~~1.1/1.4~~ | remoção de `PMap` |
-| `doc2uschema/…/regression/RelationshipTypeToEntityTypeTest` | 158 | ✅ **`m2m.USchemaToDocumentDb` (1.4b, portado)** — ~~1.4~~ | `RelationshipType` → `EntityType` |
+| `doc2uschema/…/regression/RemovePMapTest` | 141 | **`m2m.USchemaToDocumentDb` (1.4b, portado)** — ~~1.1/1.4~~ | remoção de `PMap` |
+| `doc2uschema/…/regression/RelationshipTypeToEntityTypeTest` | 158 | **`m2m.USchemaToDocumentDb` (1.4b, portado)** — ~~1.4~~ | `RelationshipType` → `EntityType` |
 | `doc2uschema/…/regression/J2SchemaSimpleTests` | — | `intermediate.raw` (1.1) | JSON → schema cru; asserções sobre a **string** do schema |
 | `mongodb2uschema/…/SimplificationTest` | 187 | `extractors.mongo` (2.1) | `Helpers.simplify` — normalização do documento |
 | `mongodb2uschema/…/PairOperationsTest` | 68 | `extractors.mongo` (2.1) | `generateDocumentPair` / `reducePairs` (o `map`/`reduceByKey`) |
-| `utils/…/compare/CompareDataTypeTest` | 134 | `validation.equivalence` (0.3) | ✅ **coberto** — ver nota abaixo |
-| `utils/…/compare/ComparePropertyTest` | 151 | `validation.equivalence` (0.3) | ✅ **coberto** |
-| `utils/…/compare/CompareUSchemaTest` | 225 | `validation.equivalence` (0.3) | ✅ **coberto** — é a fonte do `assertFalse(compare(null,null))` (ver C8) |
-| `utils/…/ModelIOTest` | 52 | `metamodel.xmi` (0.2) | ✅ **coberto** — round-trip de XMI |
+| `utils/…/compare/CompareDataTypeTest` | 134 | `validation.equivalence` (0.3) | **coberto** — ver nota abaixo |
+| `utils/…/compare/ComparePropertyTest` | 151 | `validation.equivalence` (0.3) | **coberto** |
+| `utils/…/compare/CompareUSchemaTest` | 225 | `validation.equivalence` (0.3) | **coberto** — é a fonte do `assertFalse(compare(null,null))` (ver C8) |
+| `utils/…/ModelIOTest` | 52 | `metamodel.xmi` (0.2) | **coberto** — round-trip de XMI |
 
 > **Os quatro de `utils/` já estão cobertos** pelas Fases 0.2/0.3 — não por porte
 > linha a linha, mas por reconstrução. Portar por cima seria redundante. A
 > **conferência de asserções** foi feita e **achou quatro lacunas reais**: ver a
 > seção abaixo.
 >
-> ⚠️ **Correção (achado da 1.6, abrindo o `.java`): `RemovePMapTest` e
+> **Correção (achado da 1.6, abrindo o `.java`): `RemovePMapTest` e
 > `RelationshipTypeToEntityTypeTest` NÃO testam o `USchemaModelBuilder`.** O
 > mapeamento acima (`1.1/1.4` e `1.4`) foi inferido pelo nome do teste, sem abrir
 > o fonte — o mesmo erro circular que gerou o falso C8. Os dois chamam

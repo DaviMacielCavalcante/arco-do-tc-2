@@ -77,7 +77,7 @@ def join_aggregated_entities(
 
     Notes
     -----
-    ⚠️ **Determinismo em aberto.** `findFirst` no original depende da ordem de
+    **Determinismo em aberto.** `findFirst` no original depende da ordem de
     iteração de `rawEntities.keySet()` — não verificado ainda que tipo de
     `Map` o `SchemaInference` usa lá (`HashMap` seria não-determinístico já
     no Java). `dict` do Python preserva ordem de inserção; isso só bate com o
@@ -224,7 +224,7 @@ def _homogeneous_arrays_merge(to_consider: ArraySC, sc: ArraySC) -> bool:
     `raw.py` deixa de ser sempre `0` (o setter que a docstring de `ArraySC`
     já menciona como só existindo pra isso).
 
-    ⚠️ **M5** (`bugs_originais.md`): se os dois lados chegarem vazios ao
+    **M5** (`bugs_originais.md`): se os dois lados chegarem vazios ao
     mesmo tempo, `to_consider.inners[0]` estoura `IndexError` — o original
     (`:132`) tem o mesmo problema, `IndexOutOfBoundsException`, confirmado
     por execução real do Java. O comentário do autor assume que isso "não
@@ -357,7 +357,7 @@ class ReferenceMatcher:
     this matcher is just too slow") e manteve assim. Replicado como está —
     não é escopo do porte otimizar o que o original também não otimizou.
 
-    ⚠️ **M6** (`bugs_originais.md`): `key` entra crua na string do regex, sem
+    **M6** (`bugs_originais.md`): `key` entra crua na string do regex, sem
     `re.escape`. O original faz o mesmo (`entry.getKey()` concatenado direto
     em `DefaultReferenceMatcher.java:34-50`, confirmado por execução real) —
     um metacaractere de regex em `key` (`.`, `+`, `(`, `[`, …) é interpretado
@@ -437,7 +437,7 @@ def create_reference_matcher(entities: Iterable[EObject]) -> ReferenceMatcher:
 
     Notes
     -----
-    ⚠️ O original usa `HashSet<String>` pras três variantes (`:24-27`) — a
+    O original usa `HashSet<String>` pras três variantes (`:24-27`) — a
     ordem de iteração de um `HashSet` real não é a de inserção, mas é
     determinística *dentro* de uma mesma execução (o hash de `String` no Java
     é uma função pura). Um `set()` do Python, em contraste, varia **entre**
@@ -480,11 +480,11 @@ def sort_structural_variations(variations: list[EObject]) -> None:
 
     Notes
     -----
-    ⚠️ **M3** (`bugs_originais.md`): o ramo `sortByCount` **não ordena** — o
+    **M3** (`bugs_originais.md`): o ramo `sortByCount` **não ordena** — o
     `ECollections.sort` está comentado no original (`:40`); só renumera
     `variationId`, deixando a ordem de inserção. Replicado como está.
 
-    ⚠️ **M4** (`bugs_originais.md`): os comparadores devolvem só `-1`/`1`,
+    **M4** (`bugs_originais.md`): os comparadores devolvem só `-1`/`1`,
     nunca `0` (`:28,34,46`) — não são uma ordem total; dois elementos "iguais"
     (mesmo timestamp/count/nº de propriedades) sempre se afirmam maiores um
     que o outro. `functools.cmp_to_key` replica esse comparador tal como é,
@@ -540,7 +540,7 @@ class OptionalTagger:
 
     Notes
     -----
-    ⚠️ **Código morto no pipeline.** No `USchemaModelBuilder`, só `put()` é
+    **Código morto no pipeline.** No `USchemaModelBuilder`, só `put()` é
     chamado de verdade; `calc_optionality()` e `is_optional()` nunca são
     invocados — estão comentados no original com `// TODO: Remove until
     recode` (quem realmente marca opcionalidade é `FeatureAnalyzer`, ver
