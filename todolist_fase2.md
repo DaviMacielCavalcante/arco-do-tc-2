@@ -2,8 +2,8 @@
 
 **Projeto:** Porte fiel e completo do U-Schema (Java/Spark/EMF) → Python — MongoDB e Neo4j
 **Autores:** Davi Cavalcante · João — CESUPA
-**Base:** `fase2_extratores_pyspark.md` · **Contrato de costura:** `extractors/triple.py` (Fase 1.0) · **Bugs:** `bugs_originais.md` · 
-**Pré-requisito:** Fase 1 ✅ (núcleo de inferência completo; golden-master do mintest com 0 divergências)
+**Base:** `fase2_extratores_pyspark.md` · **Contrato de costura:** `extractors/triple.py` (Fase 1.0) · **Bugs:** `bugs_originais.md` ·
+**Pré-requisito:** Fase 1 (núcleo de inferência completo; golden-master do mintest com 0 divergências)
 
 > **Organização por entrega.** Tarefas agrupadas por **entregável** (2.0–2.3), não por
 > autor — trabalho compartilhado, sem dono fixo. Cada bloco define uma **Saída**
@@ -13,15 +13,15 @@
 > **os extratores só produzem triplas.** Não têm inferência nem construção de
 > modelo próprios: entregam `{schema, count, firstTimestamp, lastTimestamp}` ao
 > **núcleo único** da Fase 1 (`BuildUSchema`). Isso é mais limpo que o original,
-> onde cada extrator `.spark` trazia um `ModelDirector` (ver o achado ⚠️ abaixo).
+> onde cada extrator `.spark` trazia um `ModelDirector` (ver o achado abaixo).
 >
-> ⚠️ **Abrir o `.java` antes de afirmar.** As fontes estão nos commits pinados
+> **Abrir o `.java` antes de afirmar.** As fontes estão nos commits pinados
 > (`6dfd6b4a`/`0f8f58c3`, `oracle/Dockerfile`). O falso C8 e o mapeamento errado
 > do `m2m` (1.4b) nasceram de diagnosticar pelo nome, sem abrir o fonte.
 
 ---
 
-## ⚠️ Achado que corrige a spec: há DOIS extratores MongoDB, e o certo não é o que a spec cita
+## Achado que corrige a spec: há DOIS extratores MongoDB, e o certo não é o que a spec cita
 
 `fase2_extratores_pyspark.md` §2.1 aponta `ArchetypeMapping`/`JSONMapping`/
 `ModelDirector` (pacote `mongodb2uschema.spark`) como referência. **Verificado no
@@ -36,7 +36,7 @@ fonte que esse é o extrator errado para a nossa arquitetura.** Existem dois:
 
 ---
 
-## ⚠️ Decisão de arquitetura: driver nativo, não conector oficial do Spark
+## Decisão de arquitetura: driver nativo, não conector oficial do Spark
 
 Nem o MongoDB Spark Connector nem o Neo4j Connector for Apache Spark atuais expõem
 mais a API RDD antiga que o oráculo usa (`MongoSpark.load(jsc)`/`neo4j.cypher(...).loadRowRdd()`)
@@ -53,7 +53,7 @@ mais a API RDD antiga que o oráculo usa (`MongoSpark.load(jsc)`/`neo4j.cypher(.
 ## Cadeia de desbloqueio
 
 ```text
-Fase 1 ✅ (BuildUSchema) ─┐
+Fase 1 (BuildUSchema) ─┐
 extractors/triple.py ─────┼─→ 2.0 (infra de leitura: pymongo/neo4j) ─→ 2.1 (Mongo/Helpers) ─→ 2.3 (golden-master Northwind, herdado da 1.7)
                           └─→ 2.2 (Neo4j) ────────────────────────────────────────────┘
 ```
@@ -103,7 +103,7 @@ extractors/triple.py ─────┼─→ 2.0 (infra de leitura: pymongo/neo
 
 ## 2.2 — Extrator Neo4j (paradigma grafo)
 
-> ⚠️ **Achado que corrige a spec:** o Neo4j **não** alimenta o núcleo da Fase 1.
+> **Achado que corrige a spec:** o Neo4j **não** alimenta o núcleo da Fase 1.
 > `Neo4j2USchema.process` chama `Json2USchemaModel.processArchetypes`, que usa
 > quatro classes próprias do `neo4j2uschema` — um segundo núcleo de construção
 > de `USchema`. **Decisão: portar fiel**, núcleo próprio, sem encaixar no
@@ -128,7 +128,7 @@ Duas *cypher*: `MATCH (n) RETURN DISTINCT labels(n)` lista combinações de labe
 - [x] **Comparação contra o oráculo real** — `tests/datasets/test_movies_min_golden_master.py`: os 4 XMIs Neo4j são o mesmo dataset "User Profile" em 4 escalas; arquétipos reconstruídos da estrutura do próprio `movies_min.xmi`. `compare()` devolve `equivalent=True` e zero divergências nos 4.
 - [x] **Proveniência dos XMIs Neo4j:** não há Neo4j real acessível neste ambiente nem o dataset original versionado no repo Java — daí a reconstrução acima.
 
-**Gate 2.2:** ✅ contagens idênticas ao Java; ✅ XMI ≡ oráculo (4 datasets, zero divergências); ✅ extração rodada contra Neo4j real (Aura), confirmando `N1`. **Fase 2.2 fechada.** `gen_userprofiles_neo4j.py` (gerador real do dataset) foi localizado no clone Java e trazido pra `scripts/`.
+**Gate 2.2:** contagens idênticas ao Java; XMI ≡ oráculo (4 datasets, zero divergências); extração rodada contra Neo4j real (Aura), confirmando `N1`. **Fase 2.2 fechada.** `gen_userprofiles_neo4j.py` (gerador real do dataset) foi localizado no clone Java e trazido pra `scripts/`.
 
 ---
 
@@ -137,8 +137,10 @@ Duas *cypher*: `MATCH (n) RETURN DISTINCT labels(n)` lista combinações de labe
 > **Adiado da 1.7 por decisão**: o Northwind exige a tripla **real** do extrator,
 > não reconstruível à mão. Desbloqueia quando a 2.1 existir.
 
-- [x] Rodar a 2.1 sobre o Northwind — dados reais (17 arquivos), pipeline completo → `compare()` contra `model_northwind.xmi`. **Resultado: `equivalent=True`, 15 divergências não-fatais**, todas em `Orders`/`Purchase_orders`/`Products`/`Detail` — assinatura esperada do #8. Reconfirmado depois via `MongoClient` real (Atlas), mesmo resultado exato.
-- [x] O `#8` é replicado nos dois lados (Java e porte, por decisão registrada em `bugs_originais.md`); as 15 não-fatais vêm da ordem de processamento decidir qual variação sobrevive ao colapso, não de o porte não ter o bug.
+- [x] Rodar a 2.1 sobre o Northwind — dados reais (17 arquivos), pipeline completo → `compare()` contra `model_northwind.xmi`. **Resultado: `equivalent=True`, só divergências não-fatais**, todas em `Orders`/`Purchase_orders`/`Products`/`Detail` — assinatura esperada do #8.
+  - [x] **Corrigido em 31/07/2026: o número de divergências é ordem-dependente, não invariante.** A leitura por arquivo dá **15**; a leitura por `MongoClient` local dá **12**, com os mesmos 397 documentos e as mesmas 49 linhas de tripla — muda só a ordem do cursor (`orders` devolve `_id` `30,31,32,33…` no arquivo e `33,37,32,30…` no banco). A frase anterior ("reconfirmado via Atlas, **mesmo resultado exato**") descrevia uma coincidência de ordem de inserção, não uma propriedade. Evidência e tabela em `bugs_originais.md` §#8.
+  - [x] **Invariante real** (é o que pode ser citado): `equivalent=True`, todas não-fatais, confinadas às mesmas 4 entidades, e **14/17** coleções fechando a contagem — sempre as três com campo array de tamanho variável falhando (`orders`, `products`, `purchase_orders`).
+- [x] O `#8` é replicado nos dois lados (Java e porte, por decisão registrada em `bugs_originais.md`); as não-fatais vêm da ordem de processamento decidir qual variação sobrevive ao colapso, não de o porte não ter o bug.
 - [x] Mistério do `_id`/`$oid` (achado da 1.7): **não é bug.** 15 das 17 coleções usam `_id` inteiro; `sales_reports`/`strings` usam ObjectId real (5+62=67, bate com o `count="67"` do XMI).
 
 **Saída:** golden-master do Northwind fechando estruturalmente contra o oráculo (`equivalent=True`). **Decisão do usuário: não vendorizar** os JSONs nem criar teste permanente — fica documentado aqui.
@@ -154,7 +156,7 @@ Duas *cypher*: `MATCH (n) RETURN DISTINCT labels(n)` lista combinações de labe
 
 O Mongo produz o formato de tripla (`extractors/triple.py`) e entrega ao `BuildUSchema`. O Neo4j monta o `USchema` direto, com builder próprio — os dois convergem no mesmo metamodelo `pyecore`, não no mesmo código de inferência.
 
-## Gate de aceite da Fase 2 — ✅ atingido
+## Gate de aceite da Fase 2 — atingido
 
 Para os dois paradigmas: contagem de assinaturas idêntica ao Java **e** XMI final estruturalmente equivalente ao oráculo, com toda divergência fatal explicada por um bug catalogado. Os dois `compare()` reais fecharam — Northwind e os 4 XMIs Neo4j — e a extração Neo4j também rodou contra banco real, confirmando `N1`.
 

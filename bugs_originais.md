@@ -53,7 +53,7 @@ contrário.
 | #5 | `Neo4j2USchemaMain` | hardcode/caminho Hadoop | build | patch no oráculo |
 | **#6** | `Helpers.java:66` | `_id` assumido `ObjectId` | **crash** | corrigido por construção |
 | **#7** | `USchemaModelBuilder.java:255` | array vazio indexado | **crash** | corrigido por construção |
-| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **corretude confirmada (dado real, Northwind)** | replicado (fiel) |
+| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **corretude confirmada (Northwind + escala 800k); resultado ordem-dependente** | replicado (fiel) |
 | **C1** | `CompareReference.java:38-41` | só compara `isFeaturedBy[0]` | corretude | replicado (fiel) |
 | **C2** | `CompareReference.java:27` | recursão de `opposite` sem guarda | crash latente | replicado (fiel) |
 | **C3** | `CompareSchemaType.java:95-96` | `compareNames` sem guarda de nulo | crash latente | replicado (fiel) |
@@ -191,9 +191,104 @@ de tempo publicadas — requer dados de antes/depois antes de propor.
 
 **Confirmado com dado real (golden-master do Northwind, Fase 2.3):** rodando o
 pipeline real sobre os 17 arquivos do Northwind, `compare()` devolve
-`equivalent=True` com 15 divergências não-fatais, todas em entidades com
-campo array — assinatura consistente com o #8 (a ocorrência que "sobrevive"
-ao colapso depende da ordem de processamento, não da estrutura).
+`equivalent=True` com 15 divergências não-fatais (pelo caminho de leitura por
+arquivo — ver a ressalva abaixo), todas em entidades com campo array —
+assinatura consistente com o #8 (a ocorrência que "sobrevive" ao colapso
+depende da ordem de processamento, não da estrutura).
+
+### Achado novo (31/07/2026): o resultado é **ordem-dependente**, não só subcontado
+
+O #8 é mais severo do que "descarta contagem": ele faz o modelo publicado
+depender da **ordem física** em que os documentos são lidos. Duas leituras do
+**mesmo** Northwind — mesmos 397 documentos, mesmas **49 linhas de tripla** —
+produzem modelos diferentes:
+
+| Caminho de leitura | Divergências não-fatais | `Orders` | `Purchase_orders` | `Products` |
+|---|---|---|---|---|
+| Arquivos `.json` (ordem de linha) | **15** | 24 | 22 | 40 |
+| `MongoClient` (ordem do cursor) | **12** | 38 | 23 | 40 |
+
+Causa cravada: a coleção `orders` devolve `_id` na ordem `30, 31, 32, 33…` no
+arquivo e `33, 37, 32, 30…` no cursor (banco carregado com inserção
+não-ordenada) — mesmo **conjunto**, ordem diferente. Como o colapso reaproveita
+a variação já registrada e descarta o `meta` da nova, **quem chega primeiro
+define o `count` que sobrevive**.
+
+**O que é estável** (e portanto o que pode ser citado como resultado):
+`equivalent=True`; todas as divergências **não-fatais**; confinadas a
+`Orders`/`Purchase_orders`/`Products`/`Detail`; e **14 de 17** coleções fechando
+a contagem, sempre as mesmas três falhando — exatamente as que têm campo array
+de tamanho variável.
+
+**O que não é estável:** o número de divergências e as contagens sobreviventes.
+Qualquer tabela de `count` do Northwind no texto precisa dizer **por qual
+caminho** foi extraída.
+
+### Confirmação em escala (User Profiles, 8 corridas, 31/07/2026)
+
+Bateria completa sobre os oito bancos `up_{a,b}_{small,medium,large,larger}`
+(dados em `resultados/escala_mongo.csv`). `Movie` é o **controle**: mesma
+corrida, mesmo pipeline, mas **sem array de tamanho variável**.
+
+| Rota | Escala | `User` real | No modelo | Capturado | `Movie` |
+|---|---|---|---|---|---|
+| **A** (`_id` ObjectId) | small | 100.000 | 22.168 | 22,17% | 100% |
+| | medium | 200.000 | 24.074 | 12,04% | 100% |
+| | large | 400.000 | 21.789 | 5,45% | 100% |
+| | larger | 800.000 | 21.013 | **2,63%** | 100% |
+| **B** (`_id` inteiro, ~15% arrays vazios) | small | 100.000 | 31.280 | **31,28%** | 100% |
+| | medium | 200.000 | 42.220 | 21,11% | 100% |
+| | large | 400.000 | 58.317 | 14,58% | 100% |
+| | larger | 800.000 | 91.468 | 11,43% | 100% |
+
+Três leituras:
+
+1. **A faixa do experimento original é reproduzida nas duas pontas.** O
+   registrado era "~2,6%–31%"; medimos **2,63%** (A/larger) e **31,28%**
+   (B/small). O intervalo inteiro, não uma aproximação.
+2. **O que o #8 faz não é subcontar proporcionalmente — é travar num teto quase
+   fixo.** Na Rota A a massa capturada é praticamente **constante** (22.168 →
+   24.074 → 21.789 → 21.013) enquanto o volume real cresce **8×**. O percentual
+   despenca só porque o denominador cresce e o numerador não. Essa é a
+   caracterização mais precisa do bug que o projeto produziu — mais útil que
+   "captura ~2,6%", que é um artefato do tamanho escolhido.
+3. **`Movie` intacto em 100% nas oito corridas** isola o gatilho sem ambiguidade:
+   a única diferença entre as duas entidades é `User` ter
+   `watchedMovies`/`favoriteMovies` de tamanho variável. É o `ArraySC.equals`
+   ignorando tamanho, e nada mais.
+
+A **estrutura** sai correta em todas: `User` tem as 2 variações certas (o
+gerador liga `postcode` e `surname`+`favoritos` no mesmo `i % 2`, então só
+existem 2 perfis). No `up_a_larger`, 420 linhas de tripla colapsam nelas e
+sobrevive só o `count` da primeira de cada grupo (954 e 20.059).
+
+### O enunciado preciso: depende da **ordem de leitura**, não do sorteio do dado
+
+Uma versão anterior desta seção advertia que os percentuais eram "uma amostra,
+não constantes". **A bateria de 3 sementes (23, 69, 207) refutou isso** — os
+mesmos experimentos, com dados sorteados independentemente, reproduzem os
+percentuais dentro de **1,7% no pior caso**:
+
+| Rota | Escala | seed 23 | seed 69 | seed 207 | Amplitude |
+|---|---|---|---|---|---|
+| A | small | 22,4% | 22,0% | 22,4% | 1,7% |
+| A | larger | **2,6%** | **2,6%** | **2,6%** | 1,5% |
+| B | small | **31,2%** | **31,0%** | **31,1%** | 0,5% |
+| B | larger | 11,5% | 11,5% | 11,5% | 0,5% |
+
+O número de linhas de tripla é **idêntico** entre as sementes (13/31/111/421 na
+Rota A; 21/43/133/463 na B).
+
+Os dois achados não se contradizem — eles isolam a variável:
+
+- **Northwind:** *mesmo* dado, ordem de leitura *diferente* (arquivo vs. cursor) → resultado **diferente** (15 vs. 12 divergências).
+- **User Profiles:** dado *diferente* (3 sementes), ordem de leitura *igual* (o gerador insere em `for i in range(n)` e o cursor devolve aproximadamente na ordem de inserção) → resultado **igual**.
+
+Ou seja: **o que decide qual variação sobrevive ao colapso é a ordem em que as
+ocorrências chegam, não quais valores elas têm.** Consequência prática para o
+texto: os percentuais podem ser citados como propriedade estrutural; o que
+precisa vir declarado junto é o **caminho de extração**, porque é ele que fixa
+a ordem.
 
 ### Incerteza declarada, adjacente ao #8
 
@@ -1097,8 +1192,13 @@ Ordem sugerida, do mais defensável ao mais invasivo:
     `lastTimestamp` da ocorrência nova na variação reaproveitada, em vez de
     simplesmente descartá-la. **Muda números publicados** (contagens e
     janelas de tempo de toda entidade cujas variações colapsam). Precisa vir
-    acompanhado dos dados de antes/depois (é exatamente o que a Fase 3
-    produz).
+    acompanhado dos dados de antes/depois — que a Fase 3 **não** produz por
+    decisão (o porte replica o #8; não há variante corrigida). O argumento mais
+    forte que a Fase 3 entrega é outro, e é suficiente para justificar a
+    proposta: o resultado atual é **ordem-dependente** (ver o achado de
+    31/07/2026 na seção #8) — duas leituras do mesmo banco publicam contagens
+    diferentes, o que torna o `count` do modelo não-reprodutível mesmo com o
+    dado imutável.
 12. **C1** — comparar todos os `isFeaturedBy` via multiset (correção já escrita,
     ver a seção C1). Muda vereditos do harness de validação do próprio upstream,
     mas só na direção segura: reprova a mais, nunca aprova a mais.
