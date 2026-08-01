@@ -269,6 +269,15 @@ def main() -> None:
     (`--drop`) e gera Movies, Users e as arestas WATCHED/FAVORITE em lotes,
     imprimindo o tempo de cada etapa. Sem parâmetros de função — lê
     `sys.argv` via `argparse`.
+
+    Notes
+    -----
+    `--seed` fixa o gerador pseudoaleatório e é o que torna o dataset
+    **reprodutível**. Sem ela, cada execução sorteia usuários isolados
+    (~15%) e favoritos de forma diferente: os totais de nós continuam
+    exatos, mas a divisão entre as variações de ``User`` muda — e o
+    ``compare()`` contra os XMIs-oráculo passa a acusar divergências de
+    ``count`` que **não** são defeito do porte. Ver `todolist_fase3.md` §3.1.
     """
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", choices=list(SIZES), required=True)
@@ -280,11 +289,19 @@ def main() -> None:
         action="store_true",
         help="apagar o grafo antes de gerar (recomendado entre execuções)",
     )
+    ap.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="semente do RNG; omitir dá um sorteio novo a cada execução (não reprodutível)",
+    )
     args = ap.parse_args()
+
+    random.seed(args.seed)
 
     cfg = SIZES[args.size]
     auth = (args.user, args.password) if args.user else None
-    print(f"== size {args.size} | uri {args.uri} ==")
+    print(f"== size {args.size} | uri {args.uri} | seed {args.seed} ==")
     print(f"   User={cfg['user']}  Movie={cfg['movie']}  arestas~{cfg['rels']}/user")
 
     t0 = time.time()
