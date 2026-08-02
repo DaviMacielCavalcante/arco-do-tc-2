@@ -22,11 +22,15 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.3.0",
+    "matplotlib>=3.11.1",
     "mypy>=2.1.0",
+    "polars>=1.43.2",
     "pre-commit>=4.6.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.20",
+    "seaborn>=0.13.2",
 ]
 
 [tool.ruff]
@@ -54,6 +58,12 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
+[tool.ruff.lint.isort]
+# `output` é o módulo compartilhado de scripts/, importado pelas baterias por
+# estarem no mesmo diretório. Sem isto o isort o agrupa como terceiro numas e
+# como primeira-parte noutras, gerando ordenações diferentes por arquivo.
+known-first-party = ["uschema", "output"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D"]      # don't require docstrings in tests
 "__init__.py" = ["D104"]      # don't require module docstring in __init__.py
@@ -71,8 +81,11 @@ show_error_codes = true
 pretty = true
 
 [[tool.mypy.overrides]]
-# PySpark e PyEcore não publicam type stubs completos; libere só onde falta.
-module = ["pyspark.*", "pyecore.*"]
+# PySpark, PyEcore e seaborn não publicam type stubs completos; libere só onde
+# falta. O hook de pre-commit roda `mypy .` sobre o projeto inteiro (não só o
+# que está no commit), então um import sem stub em qualquer arquivo trava o
+# commit — foi o que o seaborn fez na EDA.
+module = ["pyspark.*", "pyecore.*", "seaborn.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
