@@ -32,14 +32,17 @@ Layout `src/` (pacote `uschema`). Cada subpacote mapeia uma fase do roadmap:
 - `src/uschema/inference/` — **Fase 1.2–1.7**: núcleo `doc2uschema` (`schema_inference`, `strategies`, `builder`), o `m2m/USchemaToDocumentDb` (1.4b) e a fachada `build_uschema` (1.7).
 - `src/uschema/extractors/` — **Fase 2**: extratores por **driver nativo** (`mongo` via `pymongo`, `neo4j` via `neo4j`; PySpark ficou como paralelizador futuro, ver 2.0) + `triple` (o contrato de costura, **Fase 1.0**) + `neo4j_model` (núcleo de construção **próprio do Neo4j**, ver a nota abaixo).
 
-Fora do pacote: `resources/` (`.ecore` + XMIs de referência), `oracle/`
-(Dockerfile + `patches/`), `scripts/` (baterias de escala + geradores),
-`tests/` (`unit/`, `regression/`, `datasets/`).
+Fora do pacote: `resources/` (`.ecore` + XMIs de referência + o dataset
+Northwind em `datasets/`), `oracle/` (Dockerfile + `patches/`), `scripts/`
+(baterias de corretude e escala + geradores + `output.py`, que grava as
+tabelas), `results/` (os CSVs medidos, fora do git), `out/` (XMIs gerados, fora
+do git), `tests/` (`unit/`, `regression/`, `datasets/`).
 
 **Estado real do pacote** (mantenha esta lista honesta ao avançar): **Fases 0, 1
 e 2 fechadas** — todos os subpacotes acima estão implementados e cobertos por
-teste; **não** há stubs com `NotImplementedError`. O que falta é a **Fase 3**
-(ponta a ponta + escala): ver `fase3_validacao_escala.md` e `scripts/README.md`.
+teste; **não** há stubs com `NotImplementedError`. Na **Fase 3**, os blocos
+3.0–3.3 fecharam (infra, corretude, escala, bugs) e resta a **3.4** (análise e
+redação): ver `todolist_fase3.md` e `scripts/README.md`.
 
 Uma ausência real, para não ser confundida com lacuna de porte:
 

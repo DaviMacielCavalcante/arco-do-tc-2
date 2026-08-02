@@ -16,15 +16,22 @@
 | Bloco | Situação |
 |---|---|
 | **3.0** infra | fechado |
-| **3.1** corretude | Northwind e grafo fechados; **Sakila** é o único bloqueio externo |
-| **3.2** escala | medido; falta investigar a divergência de tendência |
-| **3.3** bugs | #6/#7 demonstrados; #8 medido; falta dataset mínimo em CI |
-| **3.4** análise | não começou |
+| **3.1** corretude | **fechado** — Northwind (dois caminhos) e grafo (4 escalas × oráculo semeado); Sakila descartado |
+| **3.2** escala | **fechado** — 40 corridas, quatro CSVs; a interpretação dos números é 3.4 |
+| **3.3** bugs | **fechado** — #6/#7 sem patch em escala, #8 medido dos dois lados |
+| **3.4** análise | não começou — depende da re-execução no formato novo (ver abaixo) |
 
 **Todos os números deste documento saíram de uma única sessão de medição**
 (02/08, ~1h30, kernel **6.17.0-40**): `run_oracle_neo4j.py --seed 23` seguido de
 `run_scale_suite.sh` com as sementes 23, 69 e 207. Nenhuma tabela mistura
 ambientes.
+
+> **Pendência de evidência, não de conclusão.** Aquela sessão gravou no formato
+> **antigo** de CSV — um arquivo por bateria. O formato foi refeito depois (uma
+> tabela por grão, ver §3.0), e os arquivos antigos saíram de `results/`. As
+> conclusões abaixo continuam válidas, porque vieram de corridas reais no kernel
+> pinado; o que falta é **regenerar os arquivos** no formato novo. São ~1h30, os
+> mesmos comandos, mais o `run_oracle_mongo.py`, que **nunca rodou**.
 
 ## Regras da fase
 
@@ -44,14 +51,20 @@ ambientes.
 
 | Script | Papel |
 |---|---|
+| `output.py` | escrita das quatro tabelas de resultado — usado por todas as baterias |
 | `run_scale_mongo.py` | bateria de escala do documento (2 rotas × 4 tamanhos) |
 | `run_scale_neo4j.py` | bateria de escala do grafo (4 escalas), compara com `resources/` |
-| `run_oracle_neo4j.py` | cadeia porte × **oráculo semeado**: regera, roda os dois lados sobre a mesma instância, compara |
+| `run_oracle_mongo.py` | cadeia porte × **oráculo semeado** no documento (`--kind mongodb`) |
+| `run_oracle_neo4j.py` | cadeia porte × **oráculo semeado** no grafo: regera, roda os dois lados sobre a mesma instância, compara |
 | `run_scale_suite.sh` | encadeia N sementes nas duas baterias de escala, sequencialmente |
 | `run_northwind.py` | corretude do Northwind pelos dois caminhos de leitura (arquivo e banco) |
 | `check_northwind_invariants.py` | invariantes estruturais do Northwind, lidos do XMI |
 | `gen_userprofiles{,_neo4j}.py` | geradores, ambos com `--seed` |
 | `clean_databases.py` | apaga só os `up_*` e o grafo — nunca o `northwind` |
+
+O módulo se chama `output.py` e não `results.py` porque o diretório de saída na
+raiz é **`results/`**: um módulo homônimo vira *namespace package* e o mypy passa
+a resolver o import para a pasta de dados.
 
 - [x] **Cronometragem em processo**, separando **extração** (I/O do driver) de **inferência+construção**. Resultado: nos dois paradigmas a inferência é ≤0,05s e **o custo é todo de extração** — o rótulo "tempo de inferência" do artigo mede, na prática, extração.
 - [x] **Sem `cli.py`/`[project.scripts]`.** Um script por bateria com `argparse`. A entrega é a equivalência demonstrada, não uma ferramenta de linha de comando.
@@ -63,17 +76,31 @@ ambientes.
 `roteiro_experimental.md` §6–7, que definia o formato, **não existe neste
 repositório**. O esquema abaixo passa a ser a referência.
 
-| Arquivo | Colunas |
-|---|---|
-| `equivalencia.csv` | `dataset,paradigma,origem,semente,referencia,equivalente,n_divergencias,categoria,mensagem` — uma linha por divergência, ou uma de campos vazios quando deu zero |
-| `oraculo_neo4j.csv` | uma linha por corrida, tempos dos dois lados e os dois vereditos (`equivalente_oraculo`, `equivalente_resources`) |
-| `escala_mongo.csv`, `escala_neo4j.csv` | como as baterias já escreviam |
+**Refeito em 02/08/2026: uma tabela por grão.** A primeira versão dava um CSV
+por bateria, o que misturava três granularidades no mesmo arquivo — os tempos da
+corrida repetidos em cada linha de entidade, o veredito repetido em cada linha
+de divergência — e obrigava a deduplicar antes de analisar. Pior: o mesmo fato
+saía *long* numa bateria e *wide* noutra. Escrita em `scripts/output.py`.
 
-`origem` (`arquivo` ou `banco`), `semente` e `referencia` foram **acrescentados**
-ao esquema do guia: sem eles a linha não é rastreável até a corrida, e o #8 é
-sensível ao caminho de leitura — as duas linhas do Northwind seriam idênticas no
-CSV e contraditórias entre si. `pico_memoria` **não** entra: nenhuma corrida
-mediu isso, e coluna vazia num CSV de evidência é pior que coluna ausente.
+| Arquivo | Grão | Chave |
+|---|---|---|
+| `corridas.csv` | uma corrida | `corrida_id` |
+| `entidades.csv` | uma entidade por corrida | `corrida_id` + `entidade` |
+| `comparacoes.csv` | um confronto com um XMI de referência | `corrida_id` + `referencia` |
+| `divergencias.csv` | uma divergência | `corrida_id` + `referencia` |
+
+O `corrida_id` é determinístico — `escala-mongodb-up_a_small-23`,
+`oraculo-neo4j-movies_min-23`, `corretude-mongodb-northwind-arquivo` —, montado
+a partir de bateria, paradigma, alvo, semente e origem. A **bateria** entra na
+chave porque a mesma escala com a mesma semente é medida duas vezes, na bateria
+de escala e na cadeia do oráculo, e são corridas distintas.
+
+Decisões de coluna:
+
+- **`origem`** (`arquivo`/`banco`) e **`referencia`** (`resources`/`oraculo_semeado`) são o que torna as linhas comparáveis: o #8 é sensível ao caminho de leitura, e o mesmo dataset confrontado com referências diferentes dá resultados diferentes **de propósito**.
+- **`capturado` saiu** — é `modelo / real`, conta da análise, não dado.
+- **`linhas_tripla` e `arquetipos` continuam separadas**, vazias no paradigma que não as produz. Fundi-las esconderia que os dois não passam pelo mesmo núcleo de construção.
+- **`pico_memoria` não entra**: nenhuma corrida mediu isso, e coluna vazia num CSV de evidência é pior que coluna ausente.
 
 ### Máquina de referência
 
@@ -93,7 +120,7 @@ Ressalvas que mudam a leitura dos tempos:
 1. **O `6.17.0-40` é o único kernel onde as duas metades rodam** — o `mongod` 8.0.28 não sobe no 7.0.0-28 (ver Riscos), e o Neo4j sobe nos dois. Por isso o pin. As corridas anteriores, feitas no 7.0.0-28, foram descartadas e refeitas aqui.
 2. **Corretude não depende de kernel nem de máquina** — `equivalent=True`, as zero divergências e o 19/17 do Northwind saem da semente e do código. Só a tabela de **tempo** é sensível ao ambiente.
 3. **O baseline do artigo também é um i9**, de geração não informada. A coincidência de nome não autoriza comparação absoluta.
-4. **Bancos e saídas em sistemas de arquivos diferentes:** os bancos em `/var/lib/...` (ext4 no NVMe, sem cifra); o repositório, e portanto `out/` e `resultados/`, em `/home/davi`, que é **eCryptfs**. A extração mede I/O sem cifra; a escrita dos XMIs passa pela camada cifrada.
+4. **Bancos e saídas em sistemas de arquivos diferentes:** os bancos em `/var/lib/...` (ext4 no NVMe, sem cifra); o repositório, e portanto `out/` e `results/`, em `/home/davi`, que é **eCryptfs**. A extração mede I/O sem cifra; a escrita dos XMIs passa pela camada cifrada.
 5. **Governor `powersave` com turbo ligado** — frequência não fixa. Mantido de propósito (medir a máquina como ela é usada), mas explica parte da dispersão entre sementes.
 6. **A identidade da imagem do oráculo não precisa entrar no CSV:** o que determina o XMI é o fonte, pinado por SHA no `Dockerfile`. O único resíduo é a tag base `maven:3.9-eclipse-temurin-8`, que flutua e mexe marginalmente no `t_oraculo` — e as versões que ela entrega estão na tabela acima.
 
@@ -103,7 +130,7 @@ Ressalvas que mudam a leitura dos tempos:
 
 ### Northwind — **fecha**
 
-- [x] **`equivalent=True` pelos dois caminhos de leitura**, com só divergências não-fatais, todas na assinatura do #8. 17 coleções, 397 documentos, **49 linhas de tripla nos dois** (`scripts/run_northwind.py`, evidência em `resultados/equivalencia.csv`).
+- [x] **`equivalent=True` pelos dois caminhos de leitura**, com só divergências não-fatais, todas na assinatura do #8. 17 coleções, 397 documentos, **49 linhas de tripla nos dois** (`scripts/run_northwind.py`, evidência em `results/comparacoes.csv`).
 - [x] **A ordem-dependência do #8 está medida numa corrida só, com os dois caminhos lado a lado** — 15 divergências lendo os arquivos, 12 lendo o cursor do Mongo, mesmo dado:
 
 | | arquivo | banco (cursor) |
@@ -127,7 +154,8 @@ Ressalvas que mudam a leitura dos tempos:
   - **A entrada do oráculo não é publicada, só a saída.** Nos dois clones Java existe um único arquivo citando Northwind — o `outputs/model_northwind.xmi`, origem do nosso `resources/mongodb/model_northwind.xmi`. Sem dados, sem script de carga, sem lista de coleções. Não se prova que usaram este dataset; a evidência é indireta — 14/17 coleções com `count` idêntico, e as 3 restantes falhando pelo #8, não por volume.
 - [x] **JSONs versionados em `resources/datasets/northwind/`** (02/08/2026, decisão do Davi): os 17 arquivos (304 KB) mais o `LICENSE` exigido pela BSD 2-Clause e um `README.md` com proveniência, commit de origem e o digest. O `run_northwind.py` passou a ler daí por padrão e reproduz **o mesmo SHA-256 e o mesmo resultado** da cópia externa. **O único dataset da fase que não se regenera por semente agora está preso ao repositório.**
 - [x] **Decidido: o Northwind NÃO vira teste de CI.** Com os dados versionados o caminho `arquivo` roda offline, então o teste seria viável (~2s, sem banco) — e foi por isso que se cogitou. **Recusado porque a intenção declarada é corrigir os bugs catalogados no futuro:** um teste afirmando `14/17` cimentaria em CI justamente o comportamento que se pretende consertar, e viraria alarme falso no dia da correção. O resultado continua sendo produzido sob demanda pelo `run_northwind.py`, com CSV.
-- [ ] Decidir se a **variação estrutural sobre o aninhado** (`fase3_validacao_escala.md:45`) entra no `check_northwind_invariants.py`.
+- [x] **Decidido (02/08/2026): a "variação estrutural sobre o aninhado" (`fase3_validacao_escala.md:45`) NÃO entra no `check_northwind_invariants.py`.** O que ela descreve foi investigado no fonte e é **design do original, não defeito**: o agregado é nomeado pelo campo, sem o caminho, então `orders.details` e `purchase_orders.details` colapsam num único `Detail` com 5 variações em duas famílias disjuntas. Evidência de linha em `bugs_originais.md`, "O que **não** é defeito". Sem defeito contra o que proteger, não há verificação a acrescentar.
+  - **Limitação que fica declarada:** o `compare_aggregate` casa as variações agregadas **só pelo nome do container** (deliberado, é o que evita recursão em agregado cíclico), então o mapeamento variação-pai → variação-filha é a única parte do modelo que a equivalência estrutural não verifica. Nenhuma evidência de que divirja — apenas não é coberto.
 
 ### User Profiles / grafo — **fecha nas quatro escalas**
 
@@ -147,17 +175,29 @@ mesma entrada, duas implementações. É o padrão-ouro da corretude do grafo.
 - [x] **O container aguenta o `larger`** — 10,2M arestas com `--memory=6g`, sem estouro. Era o risco declarado: a 0.5 só tinha exercitado `--kind neo4j` em grafo mínimo.
 - [x] **Achado que destrava o Neo4j Community** (lido no `Neo4j2USchema.java` do SHA pinado): o `--db` **não é usado para conectar** — o `SparkProcess` recebe só `(samplingRatio, bolt, user, password)` e sempre lê o banco padrão. O nome vai para `Json2USchemaModel`, ou seja, é o **nome do schema**. Consequência: um único banco de usuário não é obstáculo, mas o valor tem de casar com o do porte — divergência de `SCHEMA_NAME` é **fatal** no harness.
 - [x] **`N1` não disparou** e não podia: nenhum nó multi-label no dataset (`size(labels(n)) > 1` = 0). Segue sem confirmação empírica.
-- [ ] Decidir se algum XMI-oráculo semeado é **promovido** para `resources/`, com proveniência (semente, escala, SHA da imagem). Os quatro estão em `out/oraculo/`, fora do git.
-- [ ] Os XMIs do oráculo saem com dono `root` (o container escreve como root no volume). Inócuo para leitura; `sudo chown` se atrapalhar.
-- [ ] Repetir com uma segunda semente. Uma basta para o gate — a equivalência é estrutural, não estatística.
+- [x] **Três pendências fechadas como dispensáveis (02/08/2026), decisão do Davi:**
+  - **Nenhum XMI-oráculo semeado é promovido para `resources/`.** Aquele diretório é a amarra com o experimento publicado e é imutável (`resources/README.md`); XMI nosso lá borraria a distinção que a fase usa como método. Os quatro ficam em `out/oraculo/`, regeneráveis por semente + imagem.
+  - **Dono `root` dos XMIs do oráculo: não corrigir.** Arquivos legíveis, em `out/`, fora do git, regeneráveis.
+  - **Sem segunda semente.** O gate não pede — a equivalência é estrutural, não estatística, e uma semente já deu zero divergência nas quatro escalas.
 
-### Sakila — nada existe
+### Sakila — **descartado em 02/08/2026**
 
-- [ ] Obter o dataset (documento e/ou grafo). **Único bloqueio externo da fase.**
-- [ ] Gerar o XMI-oráculo pelo Docker (`--db <nome> --kind mongodb|neo4j`), rodar o porte, comparar.
-- [ ] Objetivo declarado: reduzir *overfitting* ao Northwind. Uma divergência **nova** aqui vale mais que a confirmação do que já se sabe.
+Levantamento do que existe publicado, antes de decidir:
 
-**Saída:** CSV de equivalência cobrindo Northwind, User Profiles (4 escalas) e Sakila, com toda divergência fatal explicada por bug catalogado.
+| Repositório | Licença | Formato | Modelagem |
+|---|---|---|---|
+| `lilhuss26/sakila25` | **MIT** | dump `mongorestore`, 3 coleções, ~200 KB | aninhada (`films` com actors/categories, `customers` com address/payments) |
+| `SouthbankSoftware/dbkoda-data` | nenhuma | dump BSON, 4,8 MB | aninhada (porte do Guy Harrison) |
+| `Ciges/MongoDB_Sample_Databases` | nenhuma | `sakila.tar.bz2`, 345 KB | migração 1:1 do MySQL, plana |
+| `vitorecarpe/Sakila-NoSQL` | nenhuma | CSV + script | aninhada; **é o único com Neo4j** |
+
+- [x] **Decidido: não entra.** Existe versão MongoDB publicada e licenciada (`sakila25`, MIT), mas **em grafo não existe dataset nenhum** — o único candidato é um pipeline acadêmico que exige montar o Sakila no MySQL e converter, o que produziria um grafo **nosso**, não de terceiros. E o `sakila25` não é o Sakila clássico: é o esquema repovoado em 2025 com dados da API do TMDB.
+- [x] **Limitação assumida, e ela é a mais séria da fase:** a validação de corretude usa **um único dataset real**, o Northwind — e só no paradigma documento. O grafo é validado **inteiramente sobre dado sintético** gerado por script nosso (`gen_userprofiles_neo4j.py`), com 9 arquétipos e nenhum nó multi-label, que é por que o `N1` nunca disparou. Consequências a declarar sem rodeio na 3.4:
+  - o *overfitting* ao Northwind **não está descartado** no documento;
+  - nenhuma corrida do grafo encontrou estrutura que não tenha sido desenhada por nós;
+  - o que sustenta a generalização não é variedade de dataset, e sim a **variedade de caminhos**: dois paradigmas, dois núcleos de construção, duas origens de leitura no Northwind, e o confronto com o oráculo Java sobre a mesma instância.
+
+**Saída:** CSV de equivalência cobrindo Northwind (dois caminhos de leitura) e User Profiles (4 escalas, grafo), com toda divergência fatal explicada por bug catalogado.
 
 ---
 
@@ -166,6 +206,18 @@ mesma entrada, duas implementações. É o padrão-ouro da corretude do grafo.
 Quatro tamanhos: 100k/200k/400k/800k `User` (50k/100k/200k/400k `Movie`).
 **Rota A** com `_id` ObjectId nativo; **Rota B** com `_id` inteiro e ~15% de
 arrays vazios (cenário relacional→NoSQL, que exercita #6 e #7).
+
+> **Aviso sobre os números derivados desta seção.** Só valem como registrados os
+> valores que estão **crus no CSV**: tempos por corrida, contagens, percentuais
+> de captura, `linhas_tripla`, vereditos. Tudo que é **derivado** — as medianas
+> entre sementes, os fatores de crescimento (18,0× · 15,3× · 26,3× · 5,25× ·
+> 3,57× · 2,08×) e as razões porte/oráculo (1,8× a 8,9×) — foi calculado **ad
+> hoc durante a sessão de 02/08/2026, sem script versionado**, e portanto não
+> atende ao critério de rastreabilidade que a própria fase impõe.
+>
+> **A EDA do Davi sobre os CSVs é quem passa a valer.** Quando ela existir, os
+> derivados abaixo são substituídos pelos dela; até lá, tratar como indicativos,
+> não como resultado publicável.
 
 - [x] Gerar os 4 tamanhos, rodar Mongo (A e B) e grafo, coletar CSV.
 - [x] **Leitura integral** — fecha no grafo (100% em todas as corridas), **não** fecha no documento, e não deve: é o #8 replicado.
@@ -219,7 +271,7 @@ acima do modo, **sempre nas escalas menores**:
 
 - [x] **O `larger` é o mais reprodutível de todos** — dispersão de **0,8%** —, e são as escalas pequenas que sujam. Isso descarta "o volume torna a medida instável".
 - [x] **A causa provável é trabalho de fundo do servidor após deleção massiva.** A corrida do oráculo semeado começou apagando um grafo de 800k (limpeza de **120,68s**) e teve `small` em 63,80s e `medium` em 184,77s — ~4× a mediana da bateria, nas duas escalas seguidas da deleção. O mesmo padrão explica os três outliers da tabela.
-- [ ] **Mitigar na próxima medição:** uma espera de estabilização entre a limpeza e o cronômetro, ou 5 sementes em vez de 3 para a mediana aguentar um outlier. **Enquanto isso, citar mediana de 3 e declarar os outliers** — nunca a média, que o outlier arrasta.
+- [x] **Regra de leitura, e recomendação para quem medir de novo:** citar **mediana** de 3, nunca a média — o outlier arrasta a média. Numa medição futura, uma espera de estabilização entre a limpeza e o cronômetro (ou 5 sementes em vez de 3) tiraria o efeito na origem. Não é pendência desta fase: nenhuma corrida nova está prevista.
 
 ### Tendência: preservada em direção, **não** em fator de crescimento
 
@@ -235,9 +287,11 @@ mediana das 3 sementes; o `t_oráculo` vem de `run_oracle_neo4j.py`.
 
 - [x] **A razão porte/oráculo cresce com a escala — 1,8× a 8,9×.** Isso **descarta "Python é N vezes mais lento"** como explicação: fosse constante de linguagem, a razão não subiria.
 - [x] **`t_oraculo` é relógio de parede do `docker run`**, não tempo de inferência: engole boot de Maven + JVM + Spark. Nesta sessão o custo fixo ficou visível — o `small` gastou 9,21s para 150k nós, quase tudo boot.
-- [ ] **A divergência de crescimento tem causas diferentes por paradigma, e não se pode tratar como uma só.**
-  - **Documento:** Rota A cresce **18,0×** para 8× de dado (1,67 → 30,07s), contra 8,7× do oráculo; Rota B, **15,3×** contra 8,1×. Hipótese: o número de esquemas distintos cresce 13 → 421 (**32×**), então o custo não é linear em documentos, é linear em documentos × variedade estrutural.
-  - **Grafo:** o porte cresce **26,3×** para 8× de dado, contra **5,25×** do oráculo; em 2× de dado (`large`→`larger`), **3,57×** contra **2,08×** — o oráculo é praticamente linear, o porte não. Aqui a hipótese acima **não serve**: são 9 arquétipos em todas as escalas, variedade constante. O suspeito é o consumo de resultado por aresta no driver nativo (10,2M registros pelo bolt e pelo loop Python) contra o `countByValue` distribuído do Spark.
+- [x] **Medido: o porte cresce mais que o oráculo nos dois paradigmas.**
+  - **Documento:** Rota A cresce **18,0×** para 8× de dado (1,67 → 30,07s), contra 8,7× do oráculo; Rota B, **15,3×** contra 8,1×.
+  - **Grafo:** o porte cresce **26,3×** para 8× de dado, contra **5,25×** do oráculo; em 2× de dado (`large`→`larger`), **3,57×** contra **2,08×** — o oráculo é praticamente linear, o porte não.
+  - **Fato estrutural que restringe as explicações:** no documento o número de esquemas distintos cresce 13 → 421 (**32×**); no grafo são **9 arquétipos em todas as escalas**. Qualquer explicação única para os dois paradigmas esbarra nisso. **Interpretar é 3.4**, não aqui.
+- [ ] **Assimetria a fechar: os números do oráculo no documento vêm do artigo, não desta máquina.** O `8,7×` e o `8,1×` acima são das tabelas publicadas — outro i9, medida que ninguém aqui reproduziu. É exatamente o confundidor que a corrida do grafo eliminou, e que no documento continuava de pé porque não existia bateria equivalente. **`scripts/run_oracle_mongo.py` foi escrito para fechar isso** (02/08) e **ainda não rodou**: o `--kind mongodb` do container só viu os 397 documentos do Northwind, na Fase 0.5, então o custo sobre 800 mil é desconhecido. Rodar pelas escalas menores primeiro.
 
 **Saída:** CSV de escala completo + curva tempo × volume, porte vs. oráculo.
 
@@ -256,8 +310,15 @@ mediana das 3 sementes; o `t_oráculo` vem de `run_oracle_neo4j.py`.
 - [x] **O achado que vale mais que o percentual:** na Rota A a massa capturada é praticamente **constante** — 22.377 → 24.252 → 21.867 → 20.988 — enquanto o volume real cresce 8×. O #8 não subconta proporcionalmente: **trava num teto quase fixo**, e o percentual só despenca porque o denominador cresce. Citar "captura 2,6%" sem dizer o tamanho é citar um artefato.
 - [x] **O gatilho está isolado sem ambiguidade:** `Movie` captura 100% em todas as corridas, e a única diferença para `User` é o array de tamanho variável — o `ArraySC.__eq__` que ignora tamanho.
 - [x] **A estrutura sai correta, só a contagem é comida:** `User` tem as 2 variações certas; no `up_a_larger`, 420 linhas de tripla colapsam nelas e sobrevive só o `count` da primeira de cada grupo (954 e 20.059).
-- [ ] **Dataset mínimo versionado — só para #6 e #7.** Eles estão corrigidos por construção, então travar o comportamento em CI protege uma correção, não um defeito. **O #8 fica de fora pela mesma razão que barrou o teste do Northwind** (§3.1): a intenção declarada é corrigi-lo no futuro, e uma fixture nova afirmando a subcontagem viraria alarme falso no dia da correção. A cobertura unitária que já existe (`test_objectid.py`, `test_builder.py`, `test_schema_inference.py`) permanece como está.
-- [ ] **Não "consertar" o #8 no meio da bateria.** Se algum número do documento fechar com o volume real, o porte **divergiu** do oráculo — investigar como regressão.
+- [x] **Decidido (02/08/2026): não entra dataset mínimo versionado.** O item pedia uma fixture nova para #6, #7 e #8. O **#8 sai** pela mesma razão que barrou o teste do Northwind (§3.1) — corrigi-lo é intenção declarada, e travar a subcontagem em CI viraria alarme falso no dia da correção. **#6 e #7 saem por redundância**: já estão travados nas duas camadas onde o defeito ocorre, e a fixture só acrescentaria a cola entre elas, que o `test_mintest_golden_master.py` já exercita.
+
+| Bug | Onde já está travado |
+|---|---|
+| **#6** | `tests/regression/test_objectid.py::test_id_nao_objectid_infere_sem_estourar` (regressão portada do JUnit) e `tests/unit/test_extractors_mongo.py::test_generate_document_pair_id_nao_object_id_usa_timestamp_zero` — a camada de **extração**, que é onde o Java estourava |
+| **#7** | `tests/unit/test_builder.py::test_feature_from_array_vazio_nao_estoura_bug_7` — e o dado do teste é o `privileges` do Northwind, hoje versionado em `resources/datasets/northwind/` |
+| **#8** | `tests/unit/test_schema_inference.py` — cobertura existente, mantida como está |
+
+- [x] **Regra observada: o #8 não foi "consertado" no meio da bateria.** Nenhuma das 24 corridas do documento fechou com o volume real — se tivesse fechado, seria sinal de que o porte divergiu do oráculo, a investigar como regressão. Não é mais pendência: as baterias acabaram.
 
 **Saída:** tabela de contagens por bug, com #6/#7 rodando sem patch em escala e a subcontagem do #8 casada com a do oráculo.
 
@@ -265,11 +326,13 @@ mediana das 3 sementes; o `t_oráculo` vem de `run_oracle_neo4j.py`.
 
 ## 3.4 — Coleta e análise
 
+- [ ] **EDA sobre os CSVs — do Davi.** É ela que substitui os derivados calculados ad hoc em §3.2 (medianas entre sementes, fatores de crescimento, razões porte/oráculo) por números com script por trás.
+- [ ] **Investigar a divergência de crescimento** (medida em §3.2, não explicada). As causas têm de ser diferentes por paradigma, porque o fato estrutural difere: no documento a variedade estrutural explode (13 → 421 esquemas distintos), no grafo é constante (9 arquétipos em todas as escalas). Duas hipóteses **não testadas**: (a) documento — o custo é linear em documentos × variedade estrutural, não em documentos; (b) grafo — o gargalo é o consumo de resultado por aresta no driver nativo (10,2M registros pelo bolt e pelo loop Python) contra o `countByValue` distribuído do Spark. É este item que o gate cobra como "declarado **e** investigado".
 - [ ] Consolidar os CSVs no formato da 3.0.
 - [ ] Visualizações: equivalência por dataset/paradigma; curva tempo × volume (porte vs. oráculo); contagens por bug.
 - [ ] Redigir a avaliação: **corretude** (equivalência estrutural), **escala** (tendência), **correções por construção** (#6/#7 sem patch; #8 medido dos dois lados).
 - [ ] **Escrever a investigação da tendência** — hoje está medida, com duas hipóteses distintas, e não redigida.
-- [ ] Declarar as **limitações**: a entrada do oráculo do Northwind não é publicada, só a saída (ver `resources/README.md`); os CSVs de evidência ficam fora do git, então o que sustenta os números é a prosa destes `.md` mais a regeneração por semente; o `$numberLong` não tem fixture-oráculo; a comparação é estrutural, não byte a byte.
+- [ ] Declarar as **limitações**: a corretude do documento repousa sobre **um único dataset real** (Sakila descartado — *overfitting* ao Northwind não descartado); a entrada do oráculo do Northwind não é publicada, só a saída (ver `resources/README.md`); os CSVs de evidência ficam fora do git, então o que sustenta os números é a prosa destes `.md` mais a regeneração por semente; o `$numberLong` não tem fixture-oráculo; a comparação é estrutural, não byte a byte.
 
 ---
 
@@ -278,23 +341,23 @@ mediana das 3 sementes; o `t_oráculo` vem de `run_oracle_neo4j.py`.
 - [x] `resources/README.md` — o item pedia corrigir a descrição de `movies_min.xmi` ("modelo mínimo Neo4j", quando é o User Profiles **Small**, 100.000 `User`) e listar os `up_*.xmi`. **Já estava feito**; o item é que estava desatualizado.
 - [ ] **`run_scale_mongo.py` e `run_scale_neo4j.py` têm o buraco da guarda de cabeçalho:** ele só chega ao disco no primeiro `flush`, então uma corrida interrompida deixa um CSV de zero byte que a guarda recusa para sempre. Corrigido só no `run_oracle_neo4j.py` (arquivo vazio conta como novo + `flush` imediato); são duas linhas em cada.
 - [ ] Documentos citados pelos guias de fase e ausentes do repo: `resultado_mongodb.md`, `resultado_neo4j.md`, `resultado_bug8_subcontagem_user.md`, `analise_ferramenta_uschema.md`. Recuperar ou remover as referências. **`roteiro_experimental.md` saiu da lista** — o que ele definia foi redefinido na §3.0.
-- [x] **CSVs não serão versionados** (decisão de 02/08). `.gitignore` cobre `out/` e `resultados/`. Já custou uma vez: o `escala_neo4j.csv` apagado em 01/08 levou junto o respaldo da dispersão entre sementes.
+- [x] **CSVs não serão versionados** (decisão de 02/08). `.gitignore` cobre `out/` e `results/`. Já custou uma vez: o CSV da bateria do grafo, apagado em 01/08, levou junto o respaldo da dispersão entre sementes.
 - [x] **Saída separada por produtor:** `out/porte/`, `out/oraculo/`, `resources/` (versionado). Convenção em `resources/README.md`.
-- [x] **Scripts em inglês** — `check_extraction_{mongo,neo4j}.py`, `check_northwind_invariants.py`. Seguem em português o diretório `resultados/` e os cabeçalhos dos CSVs; mudar agora invalidaria os arquivos já produzidos.
+- [x] **Scripts em inglês** — `check_extraction_{mongo,neo4j}.py`, `check_northwind_invariants.py`. Seguem em português o diretório `results/` e os cabeçalhos dos CSVs; mudar agora invalidaria os arquivos já produzidos.
 - [x] **`cli.py` não será criado** — decisão da 3.0, registrada no `CLAUDE.md`.
 
 ---
 
 ## Gate de aceite
 
-- [~] **Corretude:** Northwind fecha (`equivalent=True`, só não-fatais do #8, invariantes confirmados) e o grafo fecha nas 4 escalas contra o oráculo semeado com **zero divergências**. Falta o **Sakila**.
+- [x] **Corretude:** Northwind fecha pelos dois caminhos de leitura (`equivalent=True`, só não-fatais do #8, invariantes estruturais confirmados) e o grafo fecha nas 4 escalas contra o oráculo semeado com **zero divergências**. **Sakila descartado** — com a limitação declarada de que o documento fica com um dataset real só.
 - [x] **Escala: 40 corridas numa sessão só** — 24 do documento (3 sementes × 2 rotas × 4 tamanhos), 12 do grafo (3 × 4) e 4 do oráculo semeado. Leitura integral no grafo em todas, subcontagem do documento reprodutível dentro de **0,4 ponto**, sem estouro de memória em nenhuma.
-- [ ] **Tendência:** preservada em direção, **não** em fator de crescimento, nos dois paradigmas (documento 18,0× e grafo 26,3× para 8× de dado, contra 8,7× e 5,25× do oráculo). O gate só fecha se isso for declarado e investigado, não arredondado para "curva preservada".
+- [ ] **Tendência:** preservada em direção, **não** em fator de crescimento, nos dois paradigmas (documento 18,0× e grafo 26,3× para 8× de dado, contra 8,7× e 5,25× do oráculo). Medido em §3.2; **falta investigar**, e a investigação é item da **3.4** — o gate não fecha com "curva preservada" arredondado.
 - [x] **Bugs #6/#7:** Rota B rodou os 4 tamanhos até 800k sem patch e sem exceção.
-- [ ] **Bug #8:** medido e casando com a subcontagem do oráculo (2,62%–31,17%, `Movie` a 100% como controle). Falta o Northwind entrar na mesma planilha.
-- [x] **Rastreabilidade: todo número sai de uma corrida registrada.** Grafo (`oraculo_neo4j.csv`, `escala_neo4j.csv`), documento em escala (`escala_mongo.csv`), equivalência dos dois paradigmas (`equivalencia.csv`, 60 linhas: 32 do grafo + 27 do Northwind pelos dois caminhos). Tudo da mesma sessão e do mesmo kernel. **Exceção declarada:** os invariantes estruturais do Northwind (19/17, `Aggregate`) saem do `check_northwind_invariants.py`, que imprime e não escreve arquivo — são livres de contagem e reproduzíveis por um comando.
+- [x] **Bug #8:** medido e casando com a subcontagem do oráculo (2,62%–31,17% no User Profiles, `Movie` a 100% como controle), e o **Northwind entrou na mesma planilha** — `comparacoes.csv`, pelos dois caminhos de leitura, com 14/17 coleções fechando nos dois. Nenhum número do documento fechou com o volume real, que é o que o gate exige.
+- [~] **Rastreabilidade: todo número sai de uma corrida registrada** — vale para os valores crus. **Os derivados de §3.2 (medianas, fatores de crescimento, razões porte/oráculo) foram calculados ad hoc, sem script**, e só fecham quando a EDA sobre os CSVs existir. A sessão de 02/08 cobriu os dois paradigmas em escala, a cadeia porte × oráculo do grafo e o Northwind pelos dois caminhos de leitura — tudo do mesmo kernel; falta **regravar no formato novo** (ver o aviso no topo). **Exceção declarada:** os invariantes estruturais do Northwind (19/17, `Aggregate`) saem do `check_northwind_invariants.py`, que imprime e não escreve arquivo — são livres de contagem e reproduzíveis por um comando.
 
-**Entregáveis:** `scripts/` (geradores + baterias), `resultados/` (CSVs), os gráficos e o material da avaliação experimental.
+**Entregáveis:** `scripts/` (geradores + baterias), `results/` (CSVs), os gráficos e o material da avaliação experimental.
 
 ---
 
@@ -306,5 +369,5 @@ mediana das 3 sementes; o `t_oráculo` vem de `run_oracle_neo4j.py`.
 - **MongoDB não sobe em kernel ≥6.19.** O `mongod` 8.0.28 recusa iniciar (`SERVER-125742` só remove o guard para kernel **≥7.0.14**, e o apt não oferece nada nessa faixa). Contorno: bootar o **6.17.0-40-generic**. Docker **não** resolve — o container compartilha o kernel do host. A bateria exige kernel <6.19 **ou** MongoDB ≥8.0.30 com kernel ≥7.0.14.
 - **Alvo do #8 conflitante com a fidelidade** — se passar batido, ou o gate de equivalência quebra ou se publica um número que o porte não produz.
 - **Memória em pura-Python** nos 800k — perfil diferente do Spark; `mapPartitions` é a saída, não a reescrita.
-- **Sakila indisponível** — sem ele a corretude do documento fica só no Northwind.
+- **Sakila descartado (02/08/2026)** — a corretude do documento fica com um dataset real só, o Northwind, e o *overfitting* a ele não está descartado. Deixa de ser risco em aberto e passa a ser limitação declarada.
 - **`N1` (nós multi-label)** aparecendo pela primeira vez numa extração real — diagnosticar pelo `.java`, não pelo sintoma.

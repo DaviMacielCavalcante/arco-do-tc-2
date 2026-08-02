@@ -40,7 +40,7 @@ Quatro tamanhos: 100k / 200k / 400k / 800k `User` (50k / 100k / 200k / 400k `Mov
 Roda o dataset pelos **dois caminhos de leitura** — os 17 JSONs direto do disco
 e o banco pelo cursor do `pymongo` — e compara cada um com
 `resources/mongodb/model_northwind.xmi`, gravando as divergências no
-`resultados/equivalencia.csv` com a coluna `origem`.
+`results/` com a coluna `origem`.
 
 ```bash
 uv run python scripts/run_northwind.py
@@ -60,24 +60,42 @@ Os JSONs são JSONL em extended JSON, então a leitura usa `bson.json_util.loads
 — com `json.load` puro o `{"$date": …}` viraria objeto aninhado e o modelo
 ganharia uma entidade que o oráculo não tem.
 
-## Baterias — `run_scale_mongo.py`, `run_scale_neo4j.py`, `run_oracle_neo4j.py`, `run_scale_suite.sh`
+## Cadeia porte × oráculo — `run_oracle_neo4j.py`, `run_oracle_mongo.py`
 
-`run_oracle_neo4j.py` é a cadeia de **corretude** do grafo (Fase 3.1): por
-escala, limpa, regera com a semente, roda o porte, roda o **oráculo Java em
-Docker sobre a mesma instância** e compara os dois XMIs — mais uma comparação
-contra `resources/`, que serve de contraste. Exige a imagem buildada
-(`docker build -t extrator-uschema oracle/`) e o Neo4j no ar.
+Por escala: limpa, regera com a semente, roda o porte, roda o **oráculo Java em
+Docker sobre a mesma instância** e compara os dois XMIs. É a comparação mais
+forte que o projeto faz — mesma entrada, duas implementações. Exige a imagem
+buildada (`docker build -t extrator-uschema oracle/`) e o banco no ar.
 
 ```bash
 uv run python scripts/run_oracle_neo4j.py --seed 23
 uv run python scripts/run_oracle_neo4j.py --seed 23 --scales larger --memory 10g
+uv run python scripts/run_oracle_mongo.py --seed 23 --sizes small
 ```
 
-O XMI do oráculo é preservado como `out/oraculo/neo4j_<schema>_seed<N>.xmi`
-para que a corrida seguinte não sobrescreva a evidência da anterior. O
-`t_oraculo` do CSV é **relógio de parede do container** — inclui boot de Maven,
-JVM e Spark (~10s fixos), então não é comparável ao cronômetro interno do Java
-nem citável em escala pequena.
+No **grafo** há ainda uma segunda comparação, contra `resources/`, que serve de
+contraste: dá 7 divergências não-fatais de `count`, porque aqueles XMIs vêm de
+uma instância de semente desconhecida.
+
+No **documento** não existe XMI-oráculo publicado do User Profiles — é
+justamente o que essa bateria produz. Ela foi escrita em 02/08/2026 e **ainda
+não rodou**: o `--kind mongodb` do container só foi exercitado sobre os 397
+documentos do Northwind, na Fase 0.5, então o custo sobre 800 mil é
+desconhecido. Comece pelas escalas menores.
+
+Uma diferença de interface entre os dois, que já custou tempo: no Neo4j o
+`--db` é só o **nome do schema** (o conector lê sempre o banco padrão); no
+MongoDB o `--db` **é** o banco a conectar, e as coleções vão por
+`MONGO_COLLECTIONS`. Nos dois casos o valor precisa casar com o nome que o porte
+usa — divergência de `SCHEMA_NAME` é fatal no harness.
+
+O XMI do oráculo é preservado com a semente no nome
+(`out/oraculo/neo4j_<schema>_seed<N>.xmi`) para que a corrida seguinte não
+sobrescreva a evidência da anterior. O `t_oraculo` é **relógio de parede do
+container** — inclui boot de Maven, JVM e Spark (~10s fixos), então não é
+comparável ao cronômetro interno do Java nem citável em escala pequena.
+
+## Baterias de escala — `run_scale_mongo.py`, `run_scale_neo4j.py`, `run_scale_suite.sh`
 
 `run_scale_suite.sh` encadeia N sementes nas duas baterias de escala, **sequencialmente**
 (padrão: 23 69 207; ou exatamente 3 passadas por argumento). Começa chamando
@@ -87,27 +105,53 @@ nem citável em escala pequena.
 Não rode as duas em paralelo: os clientes Python não disputam, mas mongod e
 Neo4j disputam CPU e disco, e os tempos vão para o capítulo.
 
-Os CSVs vão para `resultados/`, em modo append, com **guarda de cabeçalho** —
-se o esquema mudar, a bateria recusa anexar em vez de corromper o arquivo em
-silêncio. Os XMIs vão para **`out/porte/`**, separados dos do oráculo
-(`out/oraculo/`) e dos de referência (`resources/`) — a convenção está em
-`resources/README.md`, "Onde cada XMI mora".
+## Saída — quatro tabelas, um grão cada
 
-**`t_limpeza` é coluna separada de `t_geracao` no CSV do grafo**, e isso é
-lição aprendida: na primeira bateria o gerador rodava com `--drop` e o
-cronômetro engolia a deleção do grafo anterior — `small` da semente 23 marcou
-7,60s e o das sementes 69/207 marcou ~127s, porque estavam apagando 10,2M
-arestas da corrida anterior. Apagar um grafo grande é custo real do paradigma,
-mas não é geração.
+Todas as baterias gravam pelo `output.py`, em `results/`, modo append,
+com **guarda de cabeçalho** (se o esquema mudar, a bateria recusa anexar em vez
+de corromper o arquivo em silêncio) e `flush` por linha, para que uma corrida de
+uma hora interrompida preserve o que já mediu.
+
+| Arquivo | Grão |
+|---|---|
+| `corridas.csv` | uma corrida — tempos e metadados |
+| `entidades.csv` | uma entidade por corrida — real contra modelo |
+| `comparacoes.csv` | um confronto com um XMI de referência |
+| `divergencias.csv` | uma divergência |
+
+Unidas por `corrida_id`, que é determinístico a partir de bateria, paradigma,
+alvo, semente e origem (`escala-mongodb-up_a_small-23`,
+`oraculo-neo4j-movies_min-23`, `corretude-mongodb-northwind-arquivo`).
+
+A versão anterior dava um CSV por bateria e misturava os três grãos no mesmo
+arquivo — tempo da corrida repetido em cada linha de entidade, veredito repetido
+em cada linha de divergência —, o que obrigava a deduplicar antes de qualquer
+análise. `capturado` saiu de vez: é `modelo / real`, conta da análise.
+
+Os XMIs vão para **`out/porte/`**, separados dos do oráculo (`out/oraculo/`) e
+dos de referência (`resources/`) — a convenção está em `resources/README.md`,
+"Onde cada XMI mora".
+
+**`t_limpeza` é coluna separada de `t_geracao`**, e isso é lição aprendida: na
+primeira bateria o gerador rodava com `--drop` e o cronômetro engolia a deleção
+do grafo anterior — `small` da semente 23 marcou 7,60s e o das sementes 69/207
+marcou ~127s, porque estavam apagando 10,2M arestas da corrida anterior. Apagar
+um grafo grande é custo real do paradigma, mas não é geração. Só o grafo
+preenche essa coluna: dropar um banco no Mongo é instantâneo.
 
 ## Baterias — protocolo
 
-- Corretude: Northwind, Sakila (documento e/ou grafo) → comparar com o oráculo
-  via `uschema.validation`.
-- Escala: rodar os quatro tamanhos, **cronometrar a inferência em processo**
-  (a leitura é por driver nativo desde a 2.0 — não há log de executor Spark),
-  confirmar leitura integral (soma dos `count` = volume gerado), comparar a
-  **tendência** (não o tempo absoluto).
+- Corretude: Northwind (dois caminhos de leitura) e User Profiles em grafo
+  (4 escalas × oráculo semeado) → comparar via `uschema.validation`. **Sakila
+  foi descartado** — não existe versão em grafo publicada, e a consequência é a
+  limitação declarada de haver um único dataset real (`todolist_fase3.md` §3.1).
+- Escala: rodar os quatro tamanhos, **cronometrar a extração e a inferência em
+  processo** (a leitura é por driver nativo desde a 2.0 — não há log de executor
+  Spark), confirmar leitura integral (soma dos `count` = volume gerado), comparar
+  a **tendência** (não o tempo absoluto).
+- Ordem sugerida numa re-execução completa: `run_northwind.py` (segundos),
+  `run_oracle_mongo.py --sizes small` (custo desconhecido, ver acima),
+  `run_oracle_neo4j.py`, e por fim `run_scale_suite.sh` (~1h).
 
 ## Números-alvo
 

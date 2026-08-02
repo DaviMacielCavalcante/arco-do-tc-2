@@ -47,8 +47,12 @@ Validar o porte completo de ponta a ponta — extrator PySpark → núcleo de in
 
 **Tarefas:** rodar o pipeline Python sobre o Northwind; comparar o XMI com o oráculo pelo harness; diagnosticar e fechar divergências. **Já executado** na Fase 2.3 e re-executado em 31/07/2026 contra MongoDB real: `equivalent=True`, só divergências não-fatais, todas na assinatura do #8 (a quantidade varia com a ordem de leitura — o invariante é **14/17** coleções fechando).
 
-### Sakila (segundo dataset real)
-Replicar o protocolo (documento e/ou grafo). Serve de segundo ponto de corretude, reduzindo o risco de *overfitting* ao Northwind.
+### Sakila (segundo dataset real) — **DESCARTADO em 02/08/2026**
+Era para replicar o protocolo (documento e/ou grafo) e servir de segundo ponto de corretude, reduzindo o risco de *overfitting* ao Northwind.
+
+**Não entra.** O levantamento do que existe publicado (`todolist_fase3.md` §3.1) achou versão MongoDB licenciada — `lilhuss26/sakila25`, MIT —, mas **em grafo não existe dataset nenhum**: o único candidato é um pipeline acadêmico que exige montar o Sakila no MySQL e converter, o que produziria um grafo **nosso**, não de terceiros. E o `sakila25` não é o Sakila clássico: é o esquema repovoado em 2025 com dados da API do TMDB.
+
+**A consequência é limitação assumida, não lacuna a fechar:** a corretude usa **um único dataset real**, o Northwind, e só no paradigma documento — o grafo é validado inteiramente sobre dado sintético gerado por script nosso. O *overfitting* ao Northwind não está descartado, e isso tem de aparecer na avaliação.
 
 ## 3.2 Escala (datasets sintéticos)
 

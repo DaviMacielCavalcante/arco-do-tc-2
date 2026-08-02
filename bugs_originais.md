@@ -227,7 +227,7 @@ caminho** foi extraída.
 ### Confirmação em escala (User Profiles, 8 corridas, 31/07/2026)
 
 Bateria completa sobre os oito bancos `up_{a,b}_{small,medium,large,larger}`
-(dados em `resultados/escala_mongo.csv`). `Movie` é o **controle**: mesma
+(dados em `results/`). `Movie` é o **controle**: mesma
 corrida, mesmo pipeline, mas **sem array de tamanho variável**.
 
 | Rota | Escala | `User` real | No modelo | Capturado | `Movie` |
@@ -1125,6 +1125,23 @@ Registrado para evitar que uma leitura futura os "corrija":
 - **`CompareAggregate` casa variações agregadas só pelo nome do `container`**,
   ignorando as `features` delas. É o que impede recursão infinita em agregado
   cíclico — o análogo do guarda que falta em C2. Deliberado.
+- **A entidade agregada é unificada pelo nome do campo, não pelo caminho até ele
+  — logo, coleções diferentes que embutem um campo homônimo colapsam numa
+  entidade só.** Verificado no fonte (02/08/2026): `SchemaInference:233`
+  singulariza o nome do elemento no caso do array (`details` → `detail`);
+  `:188` define `schema.entityName` como esse nome capitalizado, **sem** a
+  coleção de origem nem o caminho; e `:55`/`:201-217` acumulam tudo num
+  `Map<String, List<SchemaComponent>>` **com chave só de nome**, onde cada
+  esqueleto novo é comparado com as variações já presentes e reusado ou anexado.
+  O tipo do mapa é a evidência de design. **Efeito no Northwind:**
+  `orders.details` e `purchase_orders.details` viram um único `Detail` com
+  **5 variações** em duas famílias disjuntas — v1-v3 com `unit_price`/`discount`/
+  `status_id` (linha de venda), v4-v5 com `unit_cost`/`date_received`/
+  `posted_to_inventory` (linha de compra) —, e cada `Aggregate` aponta só para o
+  subconjunto que ocorre naquela variação-pai (`Orders` nunca alcança v4/v5).
+  Desconfortável semanticamente, mas consistente e intencional: em outro dataset
+  o mesmo mecanismo unifica um `address` embutido em `customers` e em
+  `suppliers`, que é o efeito desejável. **Não perde dado — diferente do #8.**
 - **`CompareStructuralVariation` ignora `variationId`, `count` e `timestamp`.**
   Há comentário explícito no upstream: *"Please note we do not compare
   variationId, count nor timestamp."* É a definição de equivalência
