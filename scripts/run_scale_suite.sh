@@ -38,7 +38,7 @@ else
     exit 2
 fi
 
-mkdir -p resultados logs
+mkdir -p results logs
 LOG="logs/baterias_$(date +%Y%m%d_%H%M%S).log"
 
 echo "sementes : ${SEEDS[*]}" | tee -a "$LOG"
@@ -60,4 +60,4 @@ done
 
 echo "" | tee -a "$LOG"
 echo "fim      : $(date --iso-8601=seconds)" | tee -a "$LOG"
-echo "CSVs     : resultados/escala_mongo.csv resultados/escala_neo4j.csv" | tee -a "$LOG"
+echo "tabelas  : results/{corridas,entidades,comparacoes,divergencias}.csv" | tee -a "$LOG"

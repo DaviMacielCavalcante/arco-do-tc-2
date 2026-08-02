@@ -1,20 +1,19 @@
 """Bateria de escala do paradigma grafo (Fase 3.2).
 
 Por escala: limpa, regera com semente fixa, extrai pelo driver nativo,
-constrói pelo núcleo próprio do Neo4j e compara com o XMI-oráculo. Uma linha
-de CSV por entidade.
+constrói pelo núcleo próprio do Neo4j e compara com o XMI-oráculo de
+`resources/neo4j/`. Grava nas quatro tabelas de `scripts/output.py`.
 
 Destrutiva: cada escala apaga o grafo anterior, e o Community tem um banco só,
 então as escalas não coexistem nem podem ser paralelizadas. Não rode
 concorrente com a bateria do Mongo — os servidores disputam CPU e disco, e os
-tempos vão para o capítulo. Contexto em `todolist_fase3.md` §3.1 e §3.2.
+tempos são resultado. Contexto em `todolist_fase3.md` §3.1 e §3.2.
 
     uv run python scripts/run_scale_neo4j.py --seed 23
     uv run python scripts/run_scale_neo4j.py --seed 69 --scales small medium
 """
 
 import argparse
-import csv
 import subprocess
 import sys
 import time
@@ -25,11 +24,12 @@ from typing import Any
 from neo4j import GraphDatabase
 from pyecore.ecore import EPackage
 
+from output import Results, run_id
 from uschema.extractors.neo4j import extract_database_archetype_counts
 from uschema.extractors.neo4j_model import build_uschema_from_archetypes
 from uschema.metamodel.registry import load_metamodel
 from uschema.metamodel.xmi import load_model, save_model
-from uschema.validation.equivalence import compare
+from uschema.validation.equivalence import ComparisonResult, compare
 
 ORACLE = {
     "small": "movies_min",
@@ -47,55 +47,20 @@ GENERATOR = ROOT / "scripts" / "gen_userprofiles_neo4j.py"
 CLEANER = ROOT / "scripts" / "clean_databases.py"
 XMI_OUTPUT = ROOT / "out" / "porte"
 
-CSV_HEADER = [
-    "seed",
-    "escala",
-    "t_limpeza",
-    "t_geracao",
-    "t_extracao",
-    "t_inferencia",
-    "arquetipos",
-    "entidade",
-    "real",
-    "modelo",
-    "capturado",
-    "equivalente",
-    "divergencias",
-]
-
 
 @dataclass(frozen=True)
 class ScaleResult:
     """Uma corrida completa numa escala."""
 
     scale: str
+    schema: str
     t_cleanup: float
     t_generation: float
     t_extraction: float
     t_inference: float
     archetypes: int
     counts: dict[str, tuple[int, int]]
-    equivalent: bool
-    divergences: int
-
-
-def check_header(output: Path) -> bool:
-    """Recusa append num CSV de esquema antigo; True se o arquivo é novo."""
-    if not output.exists():
-        return True
-
-    with open(output, newline="") as file:
-        current = next(csv.reader(file), [])
-
-    if current != CSV_HEADER:
-        raise SystemExit(
-            f"{output} tem cabeçalho incompatível.\n"
-            f"  esperado: {','.join(CSV_HEADER)}\n"
-            f"  achado:   {','.join(current)}\n"
-            "Renomeie o arquivo antigo ou use --output."
-        )
-
-    return False
+    result: ComparisonResult
 
 
 def generate(scale: str, uri: str, seed: int) -> tuple[float, float]:
@@ -130,8 +95,10 @@ def sum_by_label(rows: list[dict[str, Any]], label: str) -> int:
     )
 
 
-def measure(scale: str, uri: str, pkg: EPackage) -> ScaleResult:
+def measure(scale: str, uri: str, seed: int, pkg: EPackage) -> ScaleResult:
     """Extrai, constrói e compara com o XMI-oráculo da escala."""
+    schema = ORACLE[scale]
+
     with GraphDatabase.driver(uri, auth=None) as driver:
         actual = {
             label: int(
@@ -148,103 +115,100 @@ def measure(scale: str, uri: str, pkg: EPackage) -> ScaleResult:
 
         t_extraction = time.perf_counter() - start
 
-    name = ORACLE[scale]
-
     start = time.perf_counter()
 
-    port = build_uschema_from_archetypes(pkg, name, rows)
+    port = build_uschema_from_archetypes(pkg, schema, rows)
 
     t_inference = time.perf_counter() - start
 
-    save_model(port, XMI_OUTPUT / f"neo4j_{name}.xmi")
-
-    result = compare(load_model(ROOT / "resources" / "neo4j" / f"{name}.xmi", pkg), port)
+    save_model(port, XMI_OUTPUT / f"neo4j_{schema}_seed{seed}.xmi")
 
     return ScaleResult(
         scale=scale,
+        schema=schema,
         t_cleanup=0.0,
         t_generation=0.0,
         t_extraction=t_extraction,
         t_inference=t_inference,
         archetypes=len(rows),
         counts={label: (actual[label], sum_by_label(rows, label)) for label in LABELS},
-        equivalent=result.equivalent,
-        divergences=len(result.divergences),
+        result=compare(load_model(ROOT / "resources" / "neo4j" / f"{schema}.xmi", pkg), port),
     )
 
 
-def write_rows(writer: Any, seed: int, result: ScaleResult) -> None:
-    """Grava uma linha de CSV por entidade medida."""
-    for entity, (actual, model) in result.counts.items():
-        writer.writerow(
-            [
-                seed,
-                result.scale,
-                f"{result.t_cleanup:.2f}",
-                f"{result.t_generation:.2f}",
-                f"{result.t_extraction:.2f}",
-                f"{result.t_inference:.2f}",
-                result.archetypes,
-                entity,
-                actual,
-                model,
-                f"{model / actual:.4f}" if actual else "",
-                result.equivalent,
-                result.divergences,
-            ]
-        )
+def record(tables: Results, seed: int, run: ScaleResult) -> None:
+    """Distribui a corrida pelas quatro tabelas."""
+    key = run_id("escala", "neo4j", run.schema, seed=seed)
+
+    tables.add_run(
+        {
+            "corrida_id": key,
+            "bateria": "escala",
+            "paradigma": "neo4j",
+            "semente": seed,
+            "escala": run.scale,
+            "alvo": run.schema,
+            "origem": "banco",
+            "t_limpeza": f"{run.t_cleanup:.2f}",
+            "t_geracao": f"{run.t_generation:.2f}",
+            "t_extracao": f"{run.t_extraction:.2f}",
+            "t_inferencia": f"{run.t_inference:.2f}",
+            "arquetipos": run.archetypes,
+        }
+    )
+
+    for entity, (actual, model) in run.counts.items():
+        tables.add_entity(key, entity, actual, model)
+
+    tables.add_comparison(key, "resources", run.result.equivalent, len(run.result.divergences))
+
+    for divergence in run.result.divergences:
+        tables.add_divergence(key, "resources", divergence.category.value, divergence.message)
 
 
 def main() -> None:
-    """Roda a bateria nas escalas pedidas e acumula o CSV."""
+    """Roda a bateria nas escalas pedidas e acumula as tabelas."""
     ap = argparse.ArgumentParser(description="Bateria de escala do Neo4j (Fase 3.2)")
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--uri", default="bolt://localhost:7687")
     ap.add_argument("--scales", nargs="+", choices=list(ORACLE), default=DEFAULT_SCALES)
-    ap.add_argument("--output", type=Path, default=ROOT / "resultados" / "escala_neo4j.csv")
+    ap.add_argument("--output-dir", type=Path, default=ROOT / "results")
 
     args = ap.parse_args()
 
     pkg = load_metamodel()
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
     XMI_OUTPUT.mkdir(parents=True, exist_ok=True)
 
-    is_new = check_header(args.output)
-
-    with open(args.output, "a", newline="") as file:
-        writer = csv.writer(file)
-
-        if is_new:
-            writer.writerow(CSV_HEADER)
-
+    with Results(args.output_dir) as tables:
         for scale in args.scales:
-            print(f"\n=== seed {args.seed} | escala {scale} ===")
+            print(f"\n=== seed {args.seed} | escala {scale} ===", flush=True)
 
             t_cleanup, t_generation = generate(scale, args.uri, args.seed)
 
-            result = replace(
-                measure(scale, args.uri, pkg), t_cleanup=t_cleanup, t_generation=t_generation
+            run = replace(
+                measure(scale, args.uri, args.seed, pkg),
+                t_cleanup=t_cleanup,
+                t_generation=t_generation,
             )
 
             print(
-                f"  limpeza={result.t_cleanup:.2f}s"
-                f"  geracao={result.t_generation:.2f}s"
-                f"  extracao={result.t_extraction:.2f}s"
-                f"  inferencia={result.t_inference:.2f}s"
-                f"  arquetipos={result.archetypes}"
-                f"  equivalente={result.equivalent}"
-                f"  divergencias={result.divergences}"
+                f"  limpeza={run.t_cleanup:.2f}s"
+                f"  geracao={run.t_generation:.2f}s"
+                f"  extracao={run.t_extraction:.2f}s"
+                f"  inferencia={run.t_inference:.2f}s"
+                f"  arquetipos={run.archetypes}"
+                f"  equivalente={run.result.equivalent}"
+                f"  divergencias={len(run.result.divergences)}",
+                flush=True,
             )
 
-            for entity, (actual, model) in result.counts.items():
+            for entity, (actual, model) in run.counts.items():
                 print(f"    {entity}: real={actual} modelo={model} ({model / actual:.1%})")
 
-            write_rows(writer, args.seed, result)
+            record(tables, args.seed, run)
 
-            file.flush()
-
-    print(f"\n-> {args.output}")
+    print(f"\n-> {args.output_dir}")
 
 
 if __name__ == "__main__":

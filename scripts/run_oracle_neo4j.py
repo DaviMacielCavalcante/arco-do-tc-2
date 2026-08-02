@@ -20,7 +20,6 @@ então as escalas não coexistem nem podem ser paralelizadas. Exige a imagem
 """
 
 import argparse
-import csv
 import subprocess
 import sys
 import time
@@ -31,6 +30,7 @@ from typing import Any
 from neo4j import GraphDatabase
 from pyecore.ecore import EPackage
 
+from output import Results, run_id
 from uschema.extractors.neo4j import extract_database_archetype_counts
 from uschema.extractors.neo4j_model import build_uschema_from_archetypes
 from uschema.metamodel.registry import load_metamodel
@@ -55,44 +55,6 @@ PORT_OUTPUT = ROOT / "out" / "porte"
 ORACLE_OUTPUT = ROOT / "out" / "oraculo"
 IMAGE = "extrator-uschema"
 
-# Uma linha por corrida: tempos dos dois lados sobre a mesma instância.
-RUN_HEADER = [
-    "seed",
-    "escala",
-    "schema",
-    "t_limpeza",
-    "t_geracao",
-    "t_extracao_porte",
-    "t_inferencia_porte",
-    "t_oraculo",
-    "arquetipos",
-    "user_real",
-    "user_modelo",
-    "movie_real",
-    "movie_modelo",
-    "equivalente_oraculo",
-    "divergencias_oraculo",
-    "equivalente_resources",
-    "divergencias_resources",
-]
-
-# Uma linha por divergência (ou uma linha vazia quando não houve nenhuma). O
-# formato de `roteiro_experimental.md` §6-7 nunca chegou a este repositório
-# (`todolist_fase3.md` §3.0); este é o esquema que passa a valer, com `origem`,
-# `semente` e `referencia` acrescentados — sem eles a linha não é rastreável até
-# a corrida que a produziu, e o #8 é sensível ao caminho de leitura.
-EQUIVALENCE_HEADER = [
-    "dataset",
-    "paradigma",
-    "origem",
-    "semente",
-    "referencia",
-    "equivalente",
-    "n_divergencias",
-    "categoria",
-    "mensagem",
-]
-
 
 @dataclass(frozen=True)
 class OracleRun:
@@ -109,29 +71,6 @@ class OracleRun:
     counts: dict[str, tuple[int, int]]
     vs_oracle: ComparisonResult
     vs_resources: ComparisonResult
-
-
-def check_header(output: Path, header: list[str]) -> bool:
-    """Recusa append num CSV de esquema antigo; True se o arquivo é novo.
-
-    Arquivo de zero byte conta como novo: não tem esquema com que conflitar, e
-    é o que sobra de uma corrida interrompida antes do primeiro `flush`.
-    """
-    if not output.exists() or output.stat().st_size == 0:
-        return True
-
-    with open(output, newline="") as file:
-        current = next(csv.reader(file), [])
-
-    if current != header:
-        raise SystemExit(
-            f"{output} tem cabeçalho incompatível.\n"
-            f"  esperado: {','.join(header)}\n"
-            f"  achado:   {','.join(current)}\n"
-            "Renomeie o arquivo antigo ou use --output."
-        )
-
-    return False
 
 
 def generate(scale: str, uri: str, seed: int) -> tuple[float, float]:
@@ -265,91 +204,57 @@ def measure(scale: str, uri: str, seed: int, pkg: EPackage, memory: str) -> Orac
     )
 
 
-def write_run(writer: Any, seed: int, run: OracleRun) -> None:
-    """Grava a linha de corrida no CSV de tempos."""
-    writer.writerow(
-        [
-            seed,
-            run.scale,
-            run.schema,
-            f"{run.t_cleanup:.2f}",
-            f"{run.t_generation:.2f}",
-            f"{run.t_extraction:.2f}",
-            f"{run.t_inference:.2f}",
-            f"{run.t_oracle:.2f}",
-            run.archetypes,
-            run.counts["User"][0],
-            run.counts["User"][1],
-            run.counts["Movie"][0],
-            run.counts["Movie"][1],
-            run.vs_oracle.equivalent,
-            len(run.vs_oracle.divergences),
-            run.vs_resources.equivalent,
-            len(run.vs_resources.divergences),
-        ]
+def record(tables: Results, seed: int, run: OracleRun) -> None:
+    """Distribui a corrida pelas quatro tabelas."""
+    key = run_id("oraculo", "neo4j", run.schema, seed=seed)
+
+    tables.add_run(
+        {
+            "corrida_id": key,
+            "bateria": "oraculo",
+            "paradigma": "neo4j",
+            "semente": seed,
+            "escala": run.scale,
+            "alvo": run.schema,
+            "origem": "banco",
+            "t_limpeza": f"{run.t_cleanup:.2f}",
+            "t_geracao": f"{run.t_generation:.2f}",
+            "t_extracao": f"{run.t_extraction:.2f}",
+            "t_inferencia": f"{run.t_inference:.2f}",
+            "t_oraculo": f"{run.t_oracle:.2f}",
+            "arquetipos": run.archetypes,
+        }
     )
 
+    for entity, (actual, model) in run.counts.items():
+        tables.add_entity(key, entity, actual, model)
 
-def write_equivalence(writer: Any, seed: int, run: OracleRun) -> None:
-    """Grava uma linha por divergência, para cada referência comparada."""
-    for reference, result in (("oraculo_semeado", run.vs_oracle), ("resources", run.vs_resources)):
-        head = [
-            run.schema,
-            "neo4j",
-            "banco",
-            seed,
-            reference,
-            result.equivalent,
-            len(result.divergences),
-        ]
-
-        if not result.divergences:
-            writer.writerow([*head, "", ""])
-            continue
+    for reference, result in (
+        ("oraculo_semeado", run.vs_oracle),
+        ("resources", run.vs_resources),
+    ):
+        tables.add_comparison(key, reference, result.equivalent, len(result.divergences))
 
         for divergence in result.divergences:
-            writer.writerow([*head, divergence.category.value, divergence.message])
+            tables.add_divergence(key, reference, divergence.category.value, divergence.message)
 
 
 def main() -> None:
-    """Roda a cadeia porte x oráculo nas escalas pedidas e acumula os CSVs."""
+    """Roda a cadeia porte x oráculo nas escalas pedidas e acumula as tabelas."""
     ap = argparse.ArgumentParser(description="Porte x oráculo semeado, Neo4j (Fase 3.1)")
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--uri", default="bolt://localhost:7687")
     ap.add_argument("--scales", nargs="+", choices=list(ORACLE), default=DEFAULT_SCALES)
     ap.add_argument("--memory", default="6g", help="limite de memória do container")
-    ap.add_argument("--output", type=Path, default=ROOT / "resultados" / "oraculo_neo4j.csv")
-    ap.add_argument(
-        "--output-equivalencia",
-        type=Path,
-        default=ROOT / "resultados" / "equivalencia.csv",
-    )
+    ap.add_argument("--output-dir", type=Path, default=ROOT / "results")
 
     args = ap.parse_args()
 
     pkg = load_metamodel()
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
     PORT_OUTPUT.mkdir(parents=True, exist_ok=True)
 
-    runs_new = check_header(args.output, RUN_HEADER)
-    equivalence_new = check_header(args.output_equivalencia, EQUIVALENCE_HEADER)
-
-    with (
-        open(args.output, "a", newline="") as runs_file,
-        open(args.output_equivalencia, "a", newline="") as equivalence_file,
-    ):
-        runs = csv.writer(runs_file)
-        equivalence = csv.writer(equivalence_file)
-
-        if runs_new:
-            runs.writerow(RUN_HEADER)
-            runs_file.flush()
-
-        if equivalence_new:
-            equivalence.writerow(EQUIVALENCE_HEADER)
-            equivalence_file.flush()
-
+    with Results(args.output_dir) as tables:
         for scale in args.scales:
             print(f"\n=== seed {args.seed} | escala {scale} ===", flush=True)
 
@@ -382,13 +287,9 @@ def main() -> None:
                 flush=True,
             )
 
-            write_run(runs, args.seed, run)
-            write_equivalence(equivalence, args.seed, run)
+            record(tables, args.seed, run)
 
-            runs_file.flush()
-            equivalence_file.flush()
-
-    print(f"\n-> {args.output}\n-> {args.output_equivalencia}")
+    print(f"\n-> {args.output_dir}")
 
 
 if __name__ == "__main__":

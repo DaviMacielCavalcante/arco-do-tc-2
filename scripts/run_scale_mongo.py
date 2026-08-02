@@ -2,12 +2,12 @@
 
 Por rota (A/B) e tamanho: regera o banco com semente fixa, extrai as triplas
 pelo driver nativo, alimenta o núcleo da Fase 1 e mede quanto da massa real
-sobrevive ao bug #8.
+sobrevive ao bug #8. Grava nas tabelas de `scripts/output.py`.
 
-Não há `compare()` aqui: não existe XMI-oráculo do User Profiles em documento.
-O gate de corretude do paradigma é o Northwind; esta bateria produz tempo e
-contagem. A coluna `capturado` é o número central da 3.3 — `Movie` não tem
-array de tamanho variável e serve de controle, tem de dar 100%.
+Não há `compare()` aqui: não existe XMI-oráculo do User Profiles em documento,
+então esta bateria não produz linha em `comparacoes.csv`. O gate de corretude
+do paradigma é o Northwind (`run_northwind.py`); o confronto com o Java sobre
+este mesmo dado é o `run_oracle_mongo.py`.
 
 Destrutiva: cada corrida dropa e regera o banco alvo. Não rode concorrente com
 a bateria do Neo4j. Contexto em `todolist_fase3.md` §3.2 e §3.3.
@@ -17,7 +17,6 @@ a bateria do Neo4j. Contexto em `todolist_fase3.md` §3.2 e §3.3.
 """
 
 import argparse
-import csv
 import subprocess
 import sys
 import time
@@ -29,6 +28,7 @@ from typing import Any
 from pyecore.ecore import EPackage
 from pymongo import MongoClient
 
+from output import Results, run_id
 from uschema.extractors.mongo import extract_database_triples
 from uschema.extractors.triple import triples_from_rows
 from uschema.inference.build_uschema import BuildUSchema
@@ -42,21 +42,6 @@ DEFAULT_ROUTES = ["A", "B"]
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "gen_userprofiles.py"
 XMI_OUTPUT = ROOT / "out" / "porte"
-
-CSV_HEADER = [
-    "seed",
-    "banco",
-    "rota",
-    "tamanho",
-    "t_geracao",
-    "t_extracao",
-    "t_inferencia",
-    "linhas_tripla",
-    "entidade",
-    "real",
-    "modelo",
-    "capturado",
-]
 
 
 @dataclass(frozen=True)
@@ -76,25 +61,6 @@ class DatabaseResult:
 def database_name(route: str, size: str) -> str:
     """Monta o nome do banco no padrão já usado no repositório."""
     return f"up_{route.lower()}_{size}"
-
-
-def check_header(output: Path) -> bool:
-    """Recusa append num CSV de esquema antigo; True se o arquivo é novo."""
-    if not output.exists():
-        return True
-
-    with open(output, newline="") as file:
-        current = next(csv.reader(file), [])
-
-    if current != CSV_HEADER:
-        raise SystemExit(
-            f"{output} tem cabeçalho incompatível.\n"
-            f"  esperado: {','.join(CSV_HEADER)}\n"
-            f"  achado:   {','.join(current)}\n"
-            "Renomeie o arquivo antigo ou use --output."
-        )
-
-    return False
 
 
 def generate(route: str, size: str, uri: str, seed: int) -> float:
@@ -173,74 +139,69 @@ def measure(route: str, size: str, uri: str, pkg: EPackage) -> DatabaseResult:
     )
 
 
-def write_rows(writer: Any, seed: int, result: DatabaseResult) -> None:
-    """Grava uma linha de CSV por entidade medida."""
-    for entity, (actual, model) in result.counts.items():
-        writer.writerow(
-            [
-                seed,
-                result.database,
-                result.route,
-                result.size,
-                f"{result.t_generation:.2f}",
-                f"{result.t_extraction:.2f}",
-                f"{result.t_inference:.2f}",
-                result.triple_rows,
-                entity,
-                actual,
-                model,
-                f"{model / actual:.4f}" if actual else "",
-            ]
-        )
+def record(tables: Results, seed: int, run: DatabaseResult) -> None:
+    """Distribui a corrida pelas tabelas de corrida e de entidade."""
+    key = run_id("escala", "mongodb", run.database, seed=seed)
+
+    tables.add_run(
+        {
+            "corrida_id": key,
+            "bateria": "escala",
+            "paradigma": "mongodb",
+            "semente": seed,
+            "escala": run.size,
+            "rota": run.route,
+            "alvo": run.database,
+            "origem": "banco",
+            "t_geracao": f"{run.t_generation:.2f}",
+            "t_extracao": f"{run.t_extraction:.2f}",
+            "t_inferencia": f"{run.t_inference:.2f}",
+            "linhas_tripla": run.triple_rows,
+        }
+    )
+
+    for entity, (actual, model) in run.counts.items():
+        tables.add_entity(key, entity, actual, model)
 
 
 def main() -> None:
-    """Roda a bateria nas combinações pedidas e acumula o CSV."""
+    """Roda a bateria nas combinações pedidas e acumula as tabelas."""
     ap = argparse.ArgumentParser(description="Bateria de escala do MongoDB (Fase 3.2)")
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--uri", default="mongodb://localhost:27017")
     ap.add_argument("--routes", nargs="+", choices=DEFAULT_ROUTES, default=DEFAULT_ROUTES)
     ap.add_argument("--sizes", nargs="+", choices=DEFAULT_SIZES, default=DEFAULT_SIZES)
-    ap.add_argument("--output", type=Path, default=ROOT / "resultados" / "escala_mongo.csv")
+    ap.add_argument("--output-dir", type=Path, default=ROOT / "results")
 
     args = ap.parse_args()
 
     pkg = load_metamodel()
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
     XMI_OUTPUT.mkdir(parents=True, exist_ok=True)
 
-    is_new = check_header(args.output)
-
-    with open(args.output, "a", newline="") as file:
-        writer = csv.writer(file)
-
-        if is_new:
-            writer.writerow(CSV_HEADER)
-
+    with Results(args.output_dir) as tables:
         for route in args.routes:
             for size in args.sizes:
-                print(f"\n=== seed {args.seed} | rota {route} | {size} ===")
+                print(f"\n=== seed {args.seed} | rota {route} | {size} ===", flush=True)
 
                 t_generation = generate(route, size, args.uri, args.seed)
 
-                result = replace(measure(route, size, args.uri, pkg), t_generation=t_generation)
+                run = replace(measure(route, size, args.uri, pkg), t_generation=t_generation)
 
                 print(
-                    f"  geracao={result.t_generation:.2f}s"
-                    f"  extracao={result.t_extraction:.2f}s"
-                    f"  inferencia={result.t_inference:.2f}s"
-                    f"  triplas={result.triple_rows}"
+                    f"  geracao={run.t_generation:.2f}s"
+                    f"  extracao={run.t_extraction:.2f}s"
+                    f"  inferencia={run.t_inference:.2f}s"
+                    f"  triplas={run.triple_rows}",
+                    flush=True,
                 )
 
-                for entity, (actual, model) in result.counts.items():
+                for entity, (actual, model) in run.counts.items():
                     print(f"    {entity}: real={actual} modelo={model} ({model / actual:.1%})")
 
-                write_rows(writer, args.seed, result)
+                record(tables, args.seed, run)
 
-                file.flush()
-
-    print(f"\n-> {args.output}")
+    print(f"\n-> {args.output_dir}")
 
 
 if __name__ == "__main__":

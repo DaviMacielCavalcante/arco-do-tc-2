@@ -7,7 +7,7 @@ __pycache__/
 *.so
 
 # results
-resultados/
+results/
 out/
 
 # Distribution / packaging
