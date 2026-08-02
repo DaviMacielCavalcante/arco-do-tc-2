@@ -27,10 +27,11 @@ sobre **a mesma instância semeada** — mesma entrada, duas implementações. O
 existe contra `resources/` é o porte sobre o nosso dado × o Java sobre o dado
 deles, e é exatamente por isso que sobram divergências de `count`.
 
-**Executada em 01/08/2026, escala `small` (seed 23):** `equivalent=True`, **zero
-divergências**. Contra `resources/neo4j/movies_min.xmi` a mesma corrida acusava
-7 não-fatais. A variável isolada é o dataset, não a implementação — e é por isso
-que a distinção entre estes três diretórios não é organização, é método.
+**Executada nas quatro escalas em 02/08/2026 (seed 23):** `equivalent=True` e
+**zero divergências** em todas. Contra `resources/neo4j/` as mesmas corridas
+acusam 7 não-fatais cada. A variável isolada é o dataset, não a implementação —
+e é por isso que a distinção entre estes três diretórios não é organização, é
+método.
 
 | Arquivo | Papel |
 |---|---|
@@ -49,3 +50,32 @@ torna a leitura integral verificável no grafo, e não no documento.
 
 > Copie estes arquivos do repositório Java original / do oráculo em Docker
 > (`oracle/`). São **entrada** do porte, não gerados por ele.
+
+## De onde vem o dataset do Northwind
+
+Os dados estão **versionados** em `resources/datasets/northwind/` (17 arquivos
+JSONL, 304 KB) — proveniência completa no README de lá. Em resumo: vêm de
+**<https://github.com/jasny/mongodb-northwind>**, a versão MongoDB do banco de
+exemplo **Northwind** do Microsoft Access 2010, derivada do
+[MyWind](https://github.com/dalers/mywind) (a versão MySQL). Autoria de Arnold
+Daniels, **licença BSD 2-Clause** — o `LICENSE` está copiado junto, como ela
+exige.
+
+Ao contrário dos XMIs deste diretório, que são **saída** de referência, aqueles
+são **entrada**: é o único dataset da fase que não se regenera por semente, daí
+estar no repositório.
+
+As transformações relacional → documento são **daquele** repositório, não do
+U-Schema, e são justamente o que a Fase 3.1 mede: `_id` como chave primária de
+toda coleção, `order_details` embutido como `details` em `orders`,
+`purchase_order_details` idem em `purchase_order`, e `products.supplier_ids`
+como lista de `int`. A entidade não-raiz `Detail` do invariante 19/17 nasce daí.
+
+**Limitação a declarar: a entrada do oráculo não é publicada, só a saída.** Nos
+dois clones Java existe **um único** arquivo mencionando Northwind — o
+`es.um.uschema.mongodb2uschema/outputs/model_northwind.xmi`, que é a origem do
+`model_northwind.xmi` daqui. Não há dados, script de carga nem lista de
+coleções no repositório deles, então não se pode provar que usaram exatamente
+este dataset. A evidência é indireta e forte: os `count` do XMI deles batem com
+os nossos em **14 das 17** coleções, e as três que não batem falham pelo bug #8,
+não por volume diferente — dataset diferente não se alinharia assim.
