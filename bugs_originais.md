@@ -21,7 +21,7 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
   equivalência (Fase 0.3). Não existiam catalogados.
 - **`I1`–`I3`** — achados **novos**, no `Inflector` (`.../util/inflector/`),
   levantados ao portar a normalização de nomes (Fase 0.6). O `Inflector` é código
-  vendorizado do **ModeShape**, então os defeitos são *upstream do upstream*.
+  versionado do **ModeShape**, então os defeitos são *upstream do upstream*.
 - **`M1`** — achado **novo**, em `ObjectMetadata` (`.../metadata/`), levantado ao
   portar o modelo intermediário (Fase 1.1).
 - **`M2`** — achado **novo**, em `SchemaInference`/`AliasedAggregatedEntityJoiner`,
@@ -687,7 +687,7 @@ se alguém "consertar" o método, o teste cai e obriga a leitura daqui.
 
 **Correção upstream.** Trocar o guarda por `11 <= remainder && remainder <= 13`
 (com `remainder` já sendo `number % 100`) e remover a reatribuição. Como o
-`Inflector` é cópia vendorizada do ModeShape, a correção cabe **também** lá — e
+`Inflector` é cópia versionada do ModeShape, a correção cabe **também** lá — e
 o mesmo defeito deve estar em toda a linhagem de cópias dessa classe.
 
 ---
@@ -742,7 +742,7 @@ nenhuma entrada válida, e fecha a única inconsistência de contrato da classe.
 
 ## I3 — o javadoc do `titleCase` documenta um método que não existe
 
-`Inflector.java:444-445` (idêntico nas duas cópias vendorizadas):
+`Inflector.java:444-445` (idêntico nas duas cópias versionadas):
 
 ```java
  *   inflector.titleCase("man from the boondocks")       #=> "Man From The Boondocks"
@@ -1178,7 +1178,7 @@ Ordem sugerida, do mais defensável ao mais invasivo:
    objetivamente errados (`111st`), em método que ninguém do pipeline chama.
    Merece um teste novo: o `InflectorTest` do upstream não cobre `x11`–`x13` fora
    do primeiro. **Atenção ao alvo**: `I1`, `I2` e `I3` estão no `Inflector`, que é
-   cópia vendorizada do **ModeShape** — o PR mais útil vai para lá, e o U-Schema só
+   cópia versionada do **ModeShape** — o PR mais útil vai para lá, e o U-Schema só
    precisa reavaliar a cópia.
 8. **C3** — guarda de nulo em `compareNames`, ou anotação `@NonNull`. Não muda
    comportamento em modelo válido.

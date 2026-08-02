@@ -12,7 +12,7 @@
 > - **O Northwind já fechou** na Fase 2.3 e foi re-executado em 31/07/2026
 >   contra um MongoDB real (`equivalent=True`, só não-fatais do #8) — a 3.1
 >   herda o resultado; o que falta dele é **reprodutibilidade** (os JSONs não
->   foram vendorizados, por decisão). **A quantidade de divergências é
+>   foram versionados, por decisão). **A quantidade de divergências é
 >   ordem-dependente** (15 por arquivo, 12 por cursor): o invariante é
 >   `equivalent=True` + não-fatais + 14/17 coleções. Ver `bugs_originais.md` §#8.
 > - **O Neo4j ponta a ponta fechou** em 31/07/2026 na escala `larger`:

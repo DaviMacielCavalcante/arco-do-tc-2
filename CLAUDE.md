@@ -41,16 +41,13 @@ e 2 fechadas** — todos os subpacotes acima estão implementados e cobertos por
 teste; **não** há stubs com `NotImplementedError`. O que falta é a **Fase 3**
 (ponta a ponta + escala): ver `fase3_validacao_escala.md` e `scripts/README.md`.
 
-Duas ausências reais, para não serem confundidas com lacuna de porte:
+Uma ausência real, para não ser confundida com lacuna de porte:
 
 - **`cli.py` + `[project.scripts]` não existem.** Estavam previstos para a 1.7,
   que fechou sem eles; hoje o pipeline é chamado por API
-  (`inference.build_uschema.BuildUSchema`) e pelos scripts de `scripts/`. Dívida
-  em aberto, sem fase atribuída — o primeiro consumidor natural são as baterias
-  da Fase 3.
-- **`scripts/gen_userprofiles.py`** (gerador MongoDB, Rotas A/B) ainda não foi
-  trazido do repositório original; só o do grafo (`gen_userprofiles_neo4j.py`)
-  está aqui. Bloqueia a bateria de escala do paradigma documento.
+  (`inference.build_uschema.BuildUSchema`) e pelos scripts de `scripts/`. A
+  Fase 3 **decidiu não criar** o CLI: as baterias são um script por bateria,
+  com `argparse`. Dívida em aberto, sem fase atribuída.
 
 Implemente bottom-up, test-alongside (ver `fase1_nucleo_inferencia.md`).
 
@@ -203,7 +200,7 @@ SonarQube Cloud via <https://sonarcloud.io>).
 - **Determinismo é load-bearing.** Ordenação de campos, `__eq__`/`__hash__` estrutural e ordem das variações têm de casar com o Java — divergência aqui quebra a equivalência com o oráculo. Cubra com testes desde já.
 - **`ArraySC.__eq__` ignora o tamanho do array** (decisão deliberada do autor, origem do bug #8) — o colapso de variações em `SchemaInference.java:207-211` não chama `combineMetadata`; o `meta` inteiro (count+timestamps) da ocorrência descartada some. **Não adicionar `combine_metadata` nesse ponto do porte** — ver `bugs_originais.md` #8.
 - **Bugs corrigidos por construção** (o original corrigia por patch): **#6** `_id` genérico (não assumir `ObjectId`), **#7** array vazio (checar `len==0` antes de `inners[0]`). Onde um teste JUnit codificava o bug, afirme o valor **corrigido**. **#8 não entra nessa lista** — é replicado fielmente.
-- **O Inflector é reimplementação, não lib.** Nenhuma lib Python (`inflection`, `inflect`) reproduz o Inflector do ModeShape que o Java vendoriza: as regras são uma lista **ordenada** com semântica de inserção-na-frente, e a saída depende dessa ordem (`pluralize("human")` → `"humen"`). Trocar por lib renomearia `EntityType` e quebraria a equivalência. Não reintroduza a dependência.
+- **O Inflector é reimplementação, não lib.** Nenhuma lib Python (`inflection`, `inflect`) reproduz o Inflector do ModeShape, que o Java versiona no próprio fonte: as regras são uma lista **ordenada** com semântica de inserção-na-frente, e a saída depende dessa ordem (`pluralize("human")` → `"humen"`). Trocar por lib renomearia `EntityType` e quebraria a equivalência. Não reintroduza a dependência.
 - **O `abstractjson` (Bridge Jackson/Gson) desaparece por construção** (Fase 1.5). As ~25 classes de `util/abstractjson/` existem só para abstrair duas libs de JSON do Java; a entrada do porte já é `dict`/`list` nativo, então não há o que abstrair. A **única** decisão de tipo do Bridge é o `IAJIdentify` (7 predicados), e o único predicado que o JSON nativo não distingue sozinho — `isObjectId` — está resolvido na 1.0 (`extractors/triple.py::classify`, sentinela `value == "oid"`). Remoção **estrutural** deliberada, sem perda de comportamento observável — não reintroduzir "por completude". Detalhe e verificação em `bugs_originais.md` ("O que não é defeito").
 - **O Neo4j não passa pelo núcleo da Fase 1** (achado da 2.2, corrige a spec). `Neo4j2USchema.process` chama `Json2USchemaModel.processArchetypes`, que usa quatro classes próprias do `neo4j2uschema` — um **segundo** núcleo de construção de `USchema`. Portado fiel em `extractors/neo4j_model.py`: o grafo **não** produz `SchemaTriple` nem chama `BuildUSchema`. Os dois paradigmas convergem no metamodelo PyEcore, não no código de inferência. Encaixar o Neo4j no `BuildUSchema` "por unificação" quebraria a equivalência.
 - **Há dois extratores MongoDB no original, e o certo é o `Helpers`** (achado da 2.1). `mongodb2uschema` (caminho `Helpers`) produz a tripla e alimenta o nosso núcleo — é o que gera os XMIs de referência. `mongodb2uschema.spark` (`ArchetypeMapping`/`ModelDirector`) tem construtor próprio e **não** foi portado: duplicaria a Fase 1.
