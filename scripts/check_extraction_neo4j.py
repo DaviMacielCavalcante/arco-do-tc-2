@@ -39,7 +39,7 @@ Precisa do pacote ``uschema`` (este repo) instalável/no ``PYTHONPATH``, e um
 Neo4j acessível (local, Desktop, Aura free etc.)::
 
     cd arco-do-tc-2  # raiz do repo, onde fica src/
-    PYTHONPATH=src python3 scripts/verificar_extracao_neo4j.py \\
+    PYTHONPATH=src python3 scripts/check_extraction_neo4j.py \\
         --uri bolt://localhost:7687 --user neo4j --password sua_senha --drop
 
 Sem ``--user``/``--password`` assume auth desligada (mesma convenção de

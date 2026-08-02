@@ -101,7 +101,7 @@ referência usa a ordem crua que ``labels(m)`` devolveu. Pra um nó
 multi-label que também é alvo de alguma relação, isso pode gerar **dois**
 ``EntityType`` nominalmente diferentes pro mesmo nó (um pela ordem "própria",
 outro pela ordem "de referência") — **confirmado com dado real** (Neo4j Aura,
-27/07/2026, via ``scripts/verificar_extracao_neo4j.py``): um nó ``:Zebra:Apple``
+27/07/2026, via ``scripts/check_extraction_neo4j.py``): um nó ``:Zebra:Apple``
 produziu ``Apple_AND_Zebra`` (variação real) e ``Zebra_AND_Apple`` (placeholder
 vazio) como dois ``EntityType`` distintos. Catalogado como ``N1`` em
 ``bugs_originais.md``. Este módulo **preserva a assimetria**

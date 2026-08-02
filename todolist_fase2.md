@@ -72,8 +72,8 @@ extractors/triple.py ─────┼─→ 2.0 (infra de leitura: pymongo/neo
 > Substitui a infra de conector Spark que a versão anterior deste documento
 > previa — ver a decisão de arquitetura acima.
 
-- [x] Cliente `pymongo.MongoClient` de teste — rodado contra MongoDB Atlas real (`scripts/verificar_extracao_mongo.py`), fumaça, caso `Int64` e Northwind (17 coleções, mesmo resultado da 2.3) confirmados corretos.
-- [x] Cliente `neo4j.GraphDatabase.driver` de teste — exercitado contra Neo4j Aura Free (`scripts/verificar_extracao_neo4j.py`).
+- [x] Cliente `pymongo.MongoClient` de teste — rodado contra MongoDB Atlas real (`scripts/check_extraction_mongo.py`), fumaça, caso `Int64` e Northwind (17 coleções, mesmo resultado da 2.3) confirmados corretos.
+- [x] Cliente `neo4j.GraphDatabase.driver` de teste — exercitado contra Neo4j Aura Free (`scripts/check_extraction_neo4j.py`).
 - [x] **Decidido: pura-Python agora, Spark opcional depois, sem retrabalho.** `reduce_pairs`/`build_triples` combina por `(min, max, soma)` — comutativo e associativo, então particionar não muda o resultado (provado empiricamente). `mapPartitions` cabe depois sem reescrever nada.
 - [ ] Se Spark **entrar** como paralelizador, marcar os testes com `@pytest.mark.spark` (pre-push/CI, não pre-commit).
 - [x] Conferir que `pymongo`/`neo4j` já resolvidos no `uv.lock` — estão (`4.17.0`/`6.2.0`).
@@ -143,7 +143,7 @@ Duas *cypher*: `MATCH (n) RETURN DISTINCT labels(n)` lista combinações de labe
 - [x] O `#8` é replicado nos dois lados (Java e porte, por decisão registrada em `bugs_originais.md`); as não-fatais vêm da ordem de processamento decidir qual variação sobrevive ao colapso, não de o porte não ter o bug.
 - [x] Mistério do `_id`/`$oid` (achado da 1.7): **não é bug.** 15 das 17 coleções usam `_id` inteiro; `sales_reports`/`strings` usam ObjectId real (5+62=67, bate com o `count="67"` do XMI).
 
-**Saída:** golden-master do Northwind fechando estruturalmente contra o oráculo (`equivalent=True`). **Decisão do usuário: não vendorizar** os JSONs nem criar teste permanente — fica documentado aqui.
+**Saída:** golden-master do Northwind fechando estruturalmente contra o oráculo (`equivalent=True`). **Decisão do usuário: não versionar** os JSONs nem criar teste permanente — fica documentado aqui.
 
 ---
 
@@ -162,7 +162,7 @@ Para os dois paradigmas: contagem de assinaturas idêntica ao Java **e** XMI fin
 
 ## Entregáveis
 
-`extractors/mongo.py`, `extractors/neo4j.py` (extração) e `extractors/neo4j_model.py` (construção própria do Neo4j, não `inference/`), testes de assinatura/extração/construção, o golden-master do Northwind (2.3), e os scripts de verificação manual (`scripts/verificar_extracao_neo4j.py`, `scripts/verificar_extracao_mongo.py`).
+`extractors/mongo.py`, `extractors/neo4j.py` (extração) e `extractors/neo4j_model.py` (construção própria do Neo4j, não `inference/`), testes de assinatura/extração/construção, o golden-master do Northwind (2.3), e os scripts de verificação manual (`scripts/check_extraction_neo4j.py`, `scripts/check_extraction_mongo.py`).
 
 ## Riscos da fase
 
