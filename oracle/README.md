@@ -4,7 +4,7 @@ Papel **reduzido e opcional**: **não entra na entrega** (a ferramenta portada �
 Python puro). Serve para (a) rodar o extrator original de forma reproduzível,
 sem depender do Eclipse IDE nem de nenhuma máquina específica; e (b) gerar o
 XMI-gabarito para datasets sem golden-master pronto (Sakila, variações de
-escala). Agrega **reprodutibilidade**, não funcionalidade.
+tamanho). Agrega **reprodutibilidade**, não funcionalidade.
 
 Todas as justificativas de design, decisões de patch e limitações conhecidas
 estão em **[`docker_explain.md`](docker_explain.md)** — este README fica só
@@ -54,7 +54,7 @@ docker run --network=host --memory=6g -v "$PWD/out:/output" \
 >
 > **O caminho Neo4j foi exercitado só em grafo mínimo.** A checklist da 0.5
 > (abaixo) o marca como testado ponta a ponta, mas contra um punhado de nós
-> criados via `cypher-shell` — nunca contra os 100k–800k das escalas do User
+> criados via `cypher-shell` — nunca contra os 100k–800k dos tamanhos do User
 > Profiles. É volume, não caminho, o que segue sem prova. A saída deve ir para
 > `out/oraculo/` (ver `resources/README.md`, "Onde cada XMI mora").
 
@@ -63,7 +63,7 @@ populado** no host — o oráculo é um extrator, não empacota dado nenhum. O
 `DATABASE_BOLT` é constante (`bolt://localhost:7687`) no fonte original, então
 sem `--network=host` o container procuraria o banco dentro de si mesmo.
 Preparar o banco é etapa à parte, fora deste Dockerfile. Memória ≥ ~5–6 GB
-pros datasets de escala maior.
+pros datasets de tamanho maior.
 
 **Windows/Git Bash:** prefixe os comandos acima com `MSYS_NO_PATHCONV=1`.
 Sem isso, o MSYS2 reescreve o lado `/output` do `-v` como caminho do

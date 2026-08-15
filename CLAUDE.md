@@ -14,6 +14,12 @@ O plano completo está nos `.md` da raiz: `roadmap_portabilidade.md` e
 `fase0`…`fase3`. Leia-os antes de trabalhar em qualquer módulo — eles são a
 fonte da verdade sobre fidelidade.
 
+`dicionario_de_dados.md` (raiz) é o **esquema das tabelas de evidência** da Fase
+3 — o que cada coluna de `results/*.csv` significa, quem produziu o número e
+quais leituras estão erradas. Consulte antes de escrever qualquer análise sobre
+os CSVs: várias colunas são ordem-dependentes ou de sujeitos diferentes, e o
+documento existe porque isso não é legível no dado sozinho.
+
 `bugs_originais.md` (raiz) cataloga os **defeitos herdados do Java**, com
 evidência e citação de linha: os patches `#1`–`#8` já conhecidos e os achados
 `C1`–`C7` da árvore de comparadores. Consulte-o antes de "corrigir" um
@@ -34,14 +40,14 @@ Layout `src/` (pacote `uschema`). Cada subpacote mapeia uma fase do roadmap:
 
 Fora do pacote: `resources/` (`.ecore` + XMIs de referência + o dataset
 Northwind em `datasets/`), `oracle/` (Dockerfile + `patches/`), `scripts/`
-(baterias de corretude e escala + geradores + `output.py`, que grava as
+(baterias de equivalência e volume + geradores + `output.py`, que grava as
 tabelas), `results/` (os CSVs medidos, fora do git), `out/` (XMIs gerados, fora
 do git), `tests/` (`unit/`, `regression/`, `datasets/`).
 
 **Estado real do pacote** (mantenha esta lista honesta ao avançar): **Fases 0, 1
 e 2 fechadas** — todos os subpacotes acima estão implementados e cobertos por
 teste; **não** há stubs com `NotImplementedError`. Na **Fase 3**, os blocos
-3.0–3.3 fecharam (infra, corretude, escala, bugs) e resta a **3.4** (análise e
+3.0–3.3 fecharam (infra, equivalência, tamanho, bugs) e resta a **3.4** (análise e
 redação): ver `todolist_fase3.md` e `scripts/README.md`.
 
 Uma ausência real, para não ser confundida com lacuna de porte:

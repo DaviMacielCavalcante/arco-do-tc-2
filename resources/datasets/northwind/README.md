@@ -1,6 +1,6 @@
 # Northwind (MongoDB) — dataset de entrada
 
-Os 17 arquivos JSONL que alimentam o gate de corretude do paradigma documento
+Os 17 arquivos JSONL que alimentam o gate de equivalência do paradigma documento
 (Fase 3.1). São **entrada** do porte, não saída: o XMI-oráculo correspondente é
 `resources/mongodb/model_northwind.xmi`.
 

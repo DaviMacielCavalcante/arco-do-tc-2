@@ -23,7 +23,7 @@
 - [x] Ferramental configurado no `pyproject.toml`: `ruff` (docstrings NumPy, linha 100), `mypy` estrito, `pytest`.
 - [x] Esqueleto de pacotes criado, um por fase: `metamodel/` (0.1–0.2) · `naming/` (0.6) · `validation/` (0.3) · `intermediate/` (1.1) · `inference/` (1.2–1.4) · `extractors/` (2).
 - [x] Diretórios de apoio: `resources/` (`.ecore` + XMIs), `oracle/` (Dockerfile + `patches/`), `scripts/` (baterias), `tests/` (`unit`/`regression`/`datasets`), cada um com `README.md` de escopo; `CLAUDE.md` do repositório.
-- [x] Copiar para `resources/` os artefatos de referência do repo Java original: `uschema.ecore`, `model_northwind.xmi`, `model.xmi`, `movies_min.xmi` (+ XMIs de escala Neo4j `up_*`).
+- [x] Copiar para `resources/` os artefatos de referência do repo Java original: `uschema.ecore`, `model_northwind.xmi`, `model.xmi`, `movies_min.xmi` (+ XMIs por tamanho Neo4j `up_*`).
 
 **Saída:** repositório com esqueleto, ferramental e dependências prontos — `uv sync` resolve, `ruff`/`mypy`/`pytest` rodam limpos no esqueleto vazio.
 
@@ -102,7 +102,7 @@
 
 ## 0.5 — Oráculo Java em Docker  *(gerador de gabarito + baseline — opcional)*
 
-> Papel reduzido: (a) rodar a suíte JUnit e obter o *baseline verde*; (b) gerar o XMI-gabarito só para datasets sem golden-master (Sakila, variações de escala). **Não entra na entrega** (a ferramenta portada é Python puro); agrega reprodutibilidade, não funcionalidade.
+> Papel reduzido: (a) rodar a suíte JUnit e obter o *baseline verde*; (b) gerar o XMI-gabarito só para datasets sem golden-master (Sakila, variações de volume). **Não entra na entrega** (a ferramenta portada é Python puro); agrega reprodutibilidade, não funcionalidade.
 
 - [x] Escrever o `Dockerfile` (base JDK 8 + Maven + build único — mongo-spark 3.0.1/Scala 2.12, neo4j-spark 2.4.5-M2/Spark 3.0.1/Scala 2.12 — + `entrypoint.sh` + patches `#1`/`#4`/`#5`/`#6`/`#7` verificados byte a byte). `#2`/`#3` satisfeitos estruturalmente (não precisam de `.patch` nesta build); `#8` deliberadamente fora — ver `oracle/README.md`.
 - [x] Unificar os dois builds Maven separados (Mongo migrado de Spark 2.4.1/Scala 2.11 pra 3.0.1/Scala 2.12) num só (`uschema-build/runner`), testado sem colisão de dependências transitivas e com saída idêntica aos builds antigos via `compare()`; contrato simplificado de `KIND`/`DB_NAME` (env vars) pra `--db`/`--kind` (CLI args), batendo com o desenho original do plano. Detalhe em `oracle/docker_explain.md`.

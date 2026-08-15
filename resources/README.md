@@ -20,14 +20,14 @@ geradores só ganharam `--seed` em 31/07/2026). Substituí-los perderia
 definitivamente a ligação com o experimento do artigo. XMI-oráculo gerado por
 nós vai para `out/oraculo/`; se algum dia um deles precisar virar referência
 permanente de teste, entra aqui por **promoção deliberada**, com a proveniência
-(semente, escala, SHA da imagem) registrada.
+(semente, tamanho, SHA da imagem) registrada.
 
 A comparação mais forte que o projeto pode fazer é `out/oraculo/` × `out/porte/`
 sobre **a mesma instância semeada** — mesma entrada, duas implementações. O que
 existe contra `resources/` é o porte sobre o nosso dado × o Java sobre o dado
 deles, e é exatamente por isso que sobram divergências de `count`.
 
-**Executada nas quatro escalas em 02/08/2026 (seed 23):** `equivalent=True` e
+**Executada nos quatro tamanhos em 02/08/2026 (seed 23):** `equivalent=True` e
 **zero divergências** em todas. Contra `resources/neo4j/` as mesmas corridas
 acusam 7 não-fatais cada. A variável isolada é o dataset, não a implementação —
 e é por isso que a distinção entre estes três diretórios não é organização, é
@@ -39,8 +39,8 @@ método.
 | `model_northwind.xmi` | XMI-oráculo do Northwind (19 `EntityType`, agregado `Detail`). Round-trip da Fase 0.2 e golden-master das Fases 2.3/3.1. |
 | `model_mintest.xmi` | XMI-oráculo do `mintest` — golden-master da Fase 1.7 (0 divergências). |
 | `model.xmi` | Modelo mínimo MongoDB (round-trip Fase 0.2). |
-| `movies_min.xmi` | **Não é um "modelo mínimo"** — é o **User Profiles / Neo4j na escala `small`**: 100.000 `User` (5 variações) + 50.000 `Movie`. O nome engana. |
-| `up_medium.xmi` · `up_large.xmi` · `up_larger.xmi` | Mesmo dataset nas escalas `medium`/`large`/`larger` — 200k/400k/**800k** `User` e 100k/200k/**400k** `Movie`. As quatro escalas **dobram exatamente**. |
+| `movies_min.xmi` | **Não é um "modelo mínimo"** — é o **User Profiles / Neo4j no tamanho `small`**: 100.000 `User` (5 variações) + 50.000 `Movie`. O nome engana. |
+| `up_medium.xmi` · `up_large.xmi` · `up_larger.xmi` | Mesmo dataset nos tamanhos `medium`/`large`/`larger` — 200k/400k/**800k** `User` e 100k/200k/**400k** `Movie`. Os quatro tamanhos **dobram exatamente**. |
 
 Os quatro XMIs do Neo4j são o **mesmo** dataset, gerado por
 `scripts/gen_userprofiles_neo4j.py`; só mudam o `count` e o nome do schema. A

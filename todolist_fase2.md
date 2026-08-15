@@ -30,7 +30,7 @@ fonte que esse é o extrator errado para a nossa arquitetura.** Existem dois:
 | Extrator | Produz | Alimenta | Gera os XMIs de referência? |
 |---|---|---|---|
 | `mongodb2uschema` (**Helpers**) | tripla `{schema, count, ts}` | `SchemaInference`+`USchemaModelBuilder` (nosso núcleo) | **SIM** — mintest/northwind |
-| `mongodb2uschema.spark` (ArchetypeMapping) | `{entity, properties}` | `ModelDirector` (construtor próprio, **não** o nosso núcleo) | não (escala/`up_b_larger`) |
+| `mongodb2uschema.spark` (ArchetypeMapping) | `{entity, properties}` | `ModelDirector` (construtor próprio, **não** o nosso núcleo) | não (tamanho/`up_b_larger`) |
 
 **Consequência:** a 2.1 porta o caminho **`Helpers`**, não o `ArchetypeMapping` — portar o outro duplicaria a inferência que a Fase 1 já tem.
 
@@ -125,7 +125,7 @@ Duas *cypher*: `MATCH (n) RETURN DISTINCT labels(n)` lista combinações de labe
 - [x] Portar `USchemaBuilder`+`StructuralVariationBuilder` — `extractors/neo4j_model.py`, núcleo próprio, sem tocar a Fase 1. `addReferenceToCount`/`getReferenceCount` não portados (código morto).
 - [x] Portar `AttributeOptionalsChecker`/`IgnoreSimilarReferenceBoundsProcessor` como pós-processamento. Achado: as duas classes que "stringificam tipo" no oráculo **não são a mesma função** — uma não reconhece `PList`; portado fielmente como duas funções separadas.
 - [x] Testes — `tests/unit/test_extractors_neo4j_model.py` (17 testes sintéticos).
-- [x] **Comparação contra o oráculo real** — `tests/datasets/test_movies_min_golden_master.py`: os 4 XMIs Neo4j são o mesmo dataset "User Profile" em 4 escalas; arquétipos reconstruídos da estrutura do próprio `movies_min.xmi`. `compare()` devolve `equivalent=True` e zero divergências nos 4.
+- [x] **Comparação contra o oráculo real** — `tests/datasets/test_movies_min_golden_master.py`: os 4 XMIs Neo4j são o mesmo dataset "User Profile" em 4 tamanhos; arquétipos reconstruídos da estrutura do próprio `movies_min.xmi`. `compare()` devolve `equivalent=True` e zero divergências nos 4.
 - [x] **Proveniência dos XMIs Neo4j:** não há Neo4j real acessível neste ambiente nem o dataset original versionado no repo Java — daí a reconstrução acima.
 
 **Gate 2.2:** contagens idênticas ao Java; XMI ≡ oráculo (4 datasets, zero divergências); extração rodada contra Neo4j real (Aura), confirmando `N1`. **Fase 2.2 fechada.** `gen_userprofiles_neo4j.py` (gerador real do dataset) foi localizado no clone Java e trazido pra `scripts/`.

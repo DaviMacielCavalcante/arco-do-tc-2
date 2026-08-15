@@ -53,7 +53,7 @@ que a IA foi empregada:
   empacotamento do código Java **de terceiros** (`modelum/uschema*`), não
   lógica do porte em si — `#1`, `#4`, `#5` corrigem incompatibilidades de
   build (Guice, `Path.of`/JDK 8, hardcode de máquina); `#6` e `#7` corrigem
-  bugs de corretude que **derrubam o job inteiro** (`_id` não-`ObjectId`;
+  bugs de equivalência que **derrubam o job inteiro** (`_id` não-`ObjectId`;
   array vazio indexado antes do teste de tamanho), aplicados no oráculo
   porque sem eles não há XMI algum pra comparar — decisão já prevista em
   `bugs_originais.md`. O bug `#8`, que não derruba o job (só distorce a

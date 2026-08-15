@@ -6,7 +6,7 @@ sobre um dataset conhecido e compara o XMI resultante com o esperado, via
 
 Portados do JUnit de dataset do repo: `UserProfileTest`, `EveryPoliticianTest`,
 `CompaniesTest`, `FacebookTest`, `StackOverflowTest`, além de Northwind
-(golden-master principal da Fase 1) e Sakila (segundo ponto de corretude, Fase 3).
+(golden-master principal da Fase 1) e Sakila (segundo ponto de equivalência, Fase 3).
 
-Datasets **sem** golden-master pronto (Sakila, variações de escala) usam o
+Datasets **sem** golden-master pronto (Sakila, variações de volume) usam o
 oráculo em Docker (`oracle/`) para gerar o gabarito.
