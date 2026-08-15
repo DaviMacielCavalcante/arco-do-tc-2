@@ -89,7 +89,7 @@ CREATE (u1)-[:FAVORITE]->(m1)
 CREATE (u2)-[:WATCHED {stars: 3}]->(m2)
 """
 # u3 fica isolado de propósito (sem WATCHED/FAVORITE) — mesmo caso dos ~15%
-# de users isolados do gerador de escala, exercita o nó sem `references`.
+# de users isolados do gerador por tamanho, exercita o nó sem `references`.
 
 # --- 2. Grafo da assimetria de labels ---------------------------------------
 CQL_SEED_LABEL_ASYMMETRY = """

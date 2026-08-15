@@ -59,10 +59,11 @@ ignore = [
 convention = "numpy"
 
 [tool.ruff.lint.isort]
-# `output` é o módulo compartilhado de scripts/, importado pelas baterias por
-# estarem no mesmo diretório. Sem isto o isort o agrupa como terceiro numas e
-# como primeira-parte noutras, gerando ordenações diferentes por arquivo.
-known-first-party = ["uschema", "output"]
+# `output` e `baseline` são os módulos compartilhados de scripts/, importados
+# pelas baterias por estarem no mesmo diretório. Sem isto o isort os agrupa como
+# terceiros numas e como primeira-parte noutras, gerando ordenações diferentes
+# por arquivo.
+known-first-party = ["uschema", "output", "baseline", "runs"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D"]      # don't require docstrings in tests

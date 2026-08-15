@@ -186,14 +186,15 @@ def main() -> None:
 
     cfg = SIZES[args.size]
 
-    print(f"== Rota {args.route} | size {args.size} | db {args.db} | seed {args.seed} ==")
-    print(f"   User={cfg['user']}  Movie={cfg['movie']}  rels~{cfg['rels']}/user")
+    print(
+        f"== Rota {args.route} | size {args.size} | db {args.db} | seed {args.seed} | "
+        f"User={cfg['user']} Movie={cfg['movie']} rels~{cfg['rels']}/user =="
+    )
 
     client: MongoClient[dict[str, Any]] = MongoClient(args.uri)
 
     if args.drop:
         client.drop_database(args.db)
-        print("   (banco dropado)")
 
     db = client[args.db]
 
@@ -204,8 +205,6 @@ def main() -> None:
     gen_users(db["User"], args.route, cfg["user"], movie_ids, cfg["rels"])
 
     print(f"== concluído em {time.time() - start:.1f}s ==")
-    print(f"   User.count  = {db['User'].count_documents({})}")
-    print(f"   Movie.count = {db['Movie'].count_documents({})}")
 
     client.close()
 

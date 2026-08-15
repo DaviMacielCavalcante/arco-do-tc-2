@@ -1,6 +1,6 @@
 """Invariantes estruturais do Northwind (Fase 3.1).
 
-Afirma sobre o XMI o que `fase3_validacao_escala.md:43-44` lista como
+Afirma sobre o XMI o que `fase3_validacao_volume.md:43-44` lista como
 "casos que o porte tem de reproduzir": 19 `EntityType` (17 raiz + `_id` e
 `Detail`) e o `Aggregate` de `Orders`/`Purchase_orders` para `Detail` com
 `upperBound=-1` e `optional=true`.

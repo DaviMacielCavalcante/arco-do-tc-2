@@ -1,9 +1,10 @@
-"""Corretude do Northwind pelos dois caminhos de leitura (Fase 3.1).
+"""Equivalência do Northwind pelos dois caminhos de leitura (Fase 3.1).
 
 Roda o mesmo dataset por **arquivo** (os 17 JSONs, sem banco) e por **banco**
 (o MongoDB carregado, pelo cursor do `pymongo`), constrói o USchema em cada
 caminho e compara com `resources/mongodb/model_northwind.xmi`. Grava nas
-tabelas de `scripts/output.py`, com a coluna `origem` distinguindo os dois.
+tabelas de `scripts/output.py`, com a coluna `origin` (`file`/`database`)
+distinguindo os dois.
 
 Por que os dois caminhos: o bug #8 é sensível à **ordem de leitura**, então o
 número de divergências muda conforme a origem do dado. O invariante citável não
@@ -26,7 +27,6 @@ import argparse
 import hashlib
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -34,14 +34,14 @@ from bson import json_util
 from pyecore.ecore import EPackage
 from pymongo import MongoClient
 
-from output import Results, run_id
+from output import PORT, RESOURCES, Results, entity_name, modeled_counts, run_id
+from runs import NorthwindRun
 from uschema.extractors.mongo import build_triples, extract_database_triples
 from uschema.extractors.triple import triples_from_rows
 from uschema.inference.build_uschema import BuildUSchema
 from uschema.metamodel.registry import load_metamodel
 from uschema.metamodel.xmi import load_model, save_model
-from uschema.naming.inflector import Inflector
-from uschema.validation.equivalence import ComparisonResult, compare
+from uschema.validation.equivalence import compare
 
 ROOT = Path(__file__).resolve().parents[1]
 ORACLE_XMI = ROOT / "resources" / "mongodb" / "model_northwind.xmi"
@@ -49,23 +49,6 @@ XMI_OUTPUT = ROOT / "out" / "porte"
 DEFAULT_JSON_DIR = ROOT / "resources" / "datasets" / "northwind"
 
 SCHEMA_NAME = "northwind"
-
-
-@dataclass(frozen=True)
-class Run:
-    """Uma leitura completa do Northwind por um caminho."""
-
-    origin: str
-    t_extraction: float
-    t_inference: float
-    triple_rows: int
-    counts: dict[str, tuple[int, int]]
-    result: ComparisonResult
-
-    @property
-    def closing(self) -> int:
-        """Quantas coleções têm o `count` do modelo igual ao real."""
-        return sum(1 for actual, model in self.counts.values() if actual == model)
 
 
 def digest(json_dir: Path) -> str:
@@ -129,64 +112,72 @@ def evaluate(
     rows: list[dict[str, Any]],
     actual: dict[str, int],
     t_extraction: float,
-) -> Run:
+) -> NorthwindRun:
     """Construir o USchema a partir das triplas e comparar com o oráculo."""
-    inflector = Inflector()
-
     start = time.perf_counter()
 
     port = BuildUSchema(pkg).build_from_rows(SCHEMA_NAME, triples_from_rows(rows))
 
     t_inference = time.perf_counter() - start
 
+    start = time.perf_counter()
+
     save_model(port, XMI_OUTPUT / f"mongo_northwind_{origin}.xmi")
 
-    in_model = {entity.name: sum(v.count for v in entity.variations) for entity in port.entities}
+    t_write = time.perf_counter() - start
 
-    return Run(
+    in_model = modeled_counts(port)
+
+    # Chaveado pelo nome do `EntityType` no XMI (`Orders`), não pelo da coleção
+    # (`orders`): é o vocabulário de `divergences`, e sem isso as duas tabelas
+    # não cruzam.
+    return NorthwindRun(
         origin=origin,
         t_extraction=t_extraction,
         t_inference=t_inference,
-        triple_rows=len(rows),
+        t_write=t_write,
         counts={
-            name: (total, in_model.get(inflector.capitalize(name), 0))
+            entity_name(name): (total, in_model.get(entity_name(name), 0))
             for name, total in actual.items()
         },
         result=compare(load_model(ORACLE_XMI, pkg), port),
     )
 
 
-def record(tables: Results, run: Run) -> None:
-    """Distribui a corrida pelas quatro tabelas."""
-    key = run_id("corretude", "mongodb", SCHEMA_NAME, origin=run.origin)
+def record(tables: Results, run: NorthwindRun) -> None:
+    """Distribui a corrida pelas tabelas de resultado.
+
+    Só o porte produz linhas aqui: esta bateria compara com o XMI publicado em
+    `resources/`, não roda o oráculo.
+    """
+    key = run_id("equivalence", "mongodb", SCHEMA_NAME, origin=run.origin)
 
     tables.add_run(
         {
-            "corrida_id": key,
-            "bateria": "corretude",
-            "paradigma": "mongodb",
-            "alvo": SCHEMA_NAME,
-            "origem": run.origin,
-            "t_extracao": f"{run.t_extraction:.2f}",
-            "t_inferencia": f"{run.t_inference:.2f}",
-            "linhas_tripla": run.triple_rows,
+            "run_id": key,
+            "experiment": "equivalence",
+            "paradigm": "mongodb",
+            "target": SCHEMA_NAME,
+            "origin": run.origin,
+            "total_time": f"{run.total:.2f}",
+            "extraction_time": f"{run.t_extraction:.2f}",
+            "inference_time": f"{run.t_inference:.2f}",
+            "write_time": f"{run.t_write:.2f}",
         }
     )
 
-    for entity, (actual, model) in run.counts.items():
-        tables.add_entity(key, entity, actual, model)
-
-    tables.add_comparison(key, "resources", run.result.equivalent, len(run.result.divergences))
-
-    for divergence in run.result.divergences:
-        tables.add_divergence(key, "resources", divergence.category.value, divergence.message)
+    tables.add_comparison(key, PORT, RESOURCES, run.result)
 
 
-def report(run: Run) -> None:
+def report(run: NorthwindRun) -> None:
     """Imprimir o veredito, a fração que fecha e as coleções que não fecham."""
     print(f"\n=== origem: {run.origin} ===")
-    print(f"  extracao={run.t_extraction:.2f}s  inferencia={run.t_inference:.2f}s")
-    print(f"  linhas de tripla: {run.triple_rows}")
+    print(
+        f"  extracao={run.t_extraction:.2f}s"
+        f"  inferencia={run.t_inference:.2f}s"
+        f"  escrita={run.t_write:.2f}s"
+        f"  total={run.total:.2f}s"
+    )
     print(f"  equivalente={run.result.equivalent}  divergências={len(run.result.divergences)}")
     print(f"  coleções fechando a contagem: {run.closing}/{len(run.counts)}")
 
@@ -197,7 +188,7 @@ def report(run: Run) -> None:
 
 def main() -> None:
     """Rodar os dois caminhos e acumular as tabelas."""
-    ap = argparse.ArgumentParser(description="Corretude do Northwind (Fase 3.1)")
+    ap = argparse.ArgumentParser(description="Equivalência do Northwind (Fase 3.1)")
     ap.add_argument("--uri", default="mongodb://localhost:27017")
     ap.add_argument("--db", default=SCHEMA_NAME)
     ap.add_argument("--json-dir", type=Path, default=DEFAULT_JSON_DIR)
@@ -218,16 +209,14 @@ def main() -> None:
     database_rows, database_actual, t_database = read_database(args.uri, args.db)
 
     runs = [
-        evaluate(pkg, "arquivo", file_rows, file_actual, t_file),
-        evaluate(pkg, "banco", database_rows, database_actual, t_database),
+        evaluate(pkg, "file", file_rows, file_actual, t_file),
+        evaluate(pkg, "database", database_rows, database_actual, t_database),
     ]
 
     with Results(args.output_dir) as tables:
         for run in runs:
             report(run)
             record(tables, run)
-
-    print(f"\n-> {args.output_dir}")
 
 
 if __name__ == "__main__":

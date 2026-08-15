@@ -1,71 +1,123 @@
 """Tabelas de resultado da Fase 3 — **um grão por arquivo**.
 
 As baterias antes gravavam um CSV cada, misturando três granularidades no mesmo
-arquivo: fatos da corrida (tempos, contagem de arquétipos) repetidos em cada
-linha de entidade, e o veredito repetido em cada linha de divergência. Dava para
+arquivo: fatos da corrida (os tempos) repetidos em cada linha de entidade, e
+o veredito repetido em cada linha de divergência. Dava para
 anexar linha a linha durante a corrida, mas obrigava a deduplicar na análise.
 
-Aqui cada tabela tem um grão só, e todas se unem por ``corrida_id``:
+Aqui cada tabela tem um grão só, e todas se unem por ``run_id``:
 
-===================  ======================================================
-`corridas.csv`       uma linha por corrida — tempos e metadados
-`entidades.csv`      uma linha por entidade medida — real contra modelo
-`comparacoes.csv`    uma linha por confronto com um XMI de referência
-`divergencias.csv`   uma linha por divergência
-===================  ======================================================
+=================== =======================================================
+`runs.csv`          uma execução do porte — tempos e metadados
+`oracle.csv`        uma execução do oráculo Java — só o relógio de parede
+`comparisons.csv`   um confronto com um XMI de referência
+`divergences.csv`   uma divergência
+=================== =======================================================
 
-Os nomes de coluna ficam em português, como o resto da evidência; os
-identificadores do módulo seguem em inglês, como os demais scripts do diretório.
-O módulo se chama `output` e não `results` porque o diretório de saída na raiz
-é `results/`: um módulo homônimo vira namespace package e o mypy passa a
-resolver o import para a pasta de dados.
+A limpeza do banco anterior **não** é medida: acontece, é impressa no log das
+baterias, e não vira coluna nem tabela. `clean_databases.py` segue como
+utilitário.
 
-Colunas derivadas **não** entram: `capturado` é `modelo / real` e é conta da
-análise, não dado. Colunas que só um paradigma produz (`linhas_tripla` no
-documento, `arquetipos` no grafo) ficam vazias no outro — fundi-las num nome só
-esconderia que os dois não passam pelo mesmo núcleo de construção.
+**O esquema completo, coluna a coluna, está em `dicionario_de_dados.md`** (raiz
+do repositório), que é a referência para quem for analisar os CSVs. Este módulo
+implementa o que aquele documento descreve.
+
+Todo número gravado tem **dono explícito**
+------------------------------------------
+O esquema anterior não permitia distinguir medida nossa de medida do Java: os
+tempos do porte eram colunas soltas e o do oráculo era uma coluna a mais, no
+meio deles. Hoje cada produtor tem a sua tabela — ``runs`` é do porte,
+``oracle`` é do Java.
+
+Pelo mesmo motivo ``comparisons`` e ``divergences`` nomeiam os dois lados do
+confronto (``subject``/``reference``), e a mensagem de divergência é gravada com
+os rótulos posicionais do harness já substituídos — ver :func:`name_sides`.
+
+Nomes de coluna em inglês, como o resto do código; a prosa dos `.md` segue em
+português. O módulo se chama `output` e não `results` porque o diretório de
+saída na raiz é `results/`: um módulo homônimo vira namespace package e o mypy
+passa a resolver o import para a pasta de dados.
+
+Colunas derivadas **não** entram: razão de captura, percentual e veredito por
+entidade são conta da análise. A exceção é ``normalized``, que é a métrica de
+comparabilidade com o artigo — declarada como exceção no dicionário, não como
+revogação da regra.
+
+Uma medida fica **fora das tabelas**, só no log das baterias: a contagem por
+entidade — real no banco contra somado no XMI, calculada por
+:func:`modeled_counts`. É do log que sai o invariante citável do Northwind (14
+de 17 coleções fechando a contagem).
 """
 
 import csv
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from types import TracebackType
 from typing import Any, TextIO
 
+from pyecore.ecore import EObject
+
+from uschema.naming.inflector import Inflector
+from uschema.validation.equivalence import ComparisonResult, Divergence
+
+#: Instância única — o Inflector é uma lista ordenada de regras, imutável em uso,
+#: e reconstruí-la por entidade custaria à toa numa bateria de 800 mil documentos.
+_INFLECTOR = Inflector()
+
+#: Valor de ``subject``. Constante em vez de literal solto porque as cinco
+#: baterias gravam a mesma string e o mypy não pega typo em literal — um
+#: ``"prot"`` passaria e só apareceria na análise.
+PORT = "port"
+
+#: Valores de ``reference``. ``RESOURCES`` é o XMI publicado pelos autores
+#: originais sobre o dataset **deles**; ``SEEDED_ORACLE`` é o oráculo Java
+#: rodado sobre **a mesma instância** que o porte.
+RESOURCES = "resources"
+SEEDED_ORACLE = "seeded_oracle"
+
 RUNS = [
-    "corrida_id",
-    "bateria",
-    "paradigma",
-    "semente",
-    "escala",
-    "rota",
-    "alvo",
-    "origem",
-    "t_limpeza",
-    "t_geracao",
-    "t_extracao",
-    "t_inferencia",
-    "t_oraculo",
-    "linhas_tripla",
-    "arquetipos",
+    "run_id",
+    "experiment",
+    "size",
+    "paradigm",
+    "route",
+    "target",
+    "origin",
+    "total_time",
+    "extraction_time",
+    "inference_time",
+    "write_time",
+    "query_time",
+    "normalized",
 ]
 
-ENTITIES = ["corrida_id", "entidade", "real", "modelo"]
+#: O oráculo tem tabela própria porque só reporta **um** número: o relógio de
+#: parede do `docker run`. Na mesma tabela do porte ele deixaria
+#: `extraction_time`/`inference_time`/`write_time` vazias em toda linha, e
+#: obrigaria `total_time` a ter duas definições.
+ORACLE_RUNS = ["run_id", "total_time", "normalized"]
 
-COMPARISONS = ["corrida_id", "referencia", "equivalente", "n_divergencias"]
+COMPARISONS = [
+    "run_id",
+    "subject",
+    "reference",
+    "equivalent",
+    "fatal_divergences",
+    "non_fatal_divergences",
+]
 
-DIVERGENCES = ["corrida_id", "referencia", "categoria", "mensagem"]
+DIVERGENCES = ["run_id", "subject", "reference", "category", "fatal", "message"]
 
 TABLES = {
-    "corridas": RUNS,
-    "entidades": ENTITIES,
-    "comparacoes": COMPARISONS,
-    "divergencias": DIVERGENCES,
+    "runs": RUNS,
+    "oracle": ORACLE_RUNS,
+    "comparisons": COMPARISONS,
+    "divergences": DIVERGENCES,
 }
 
 
 def run_id(
-    battery: str,
+    experiment: str,
     paradigm: str,
     target: str,
     seed: int | None = None,
@@ -74,14 +126,18 @@ def run_id(
     """Montar o identificador determinístico de uma corrida.
 
     Determinístico de propósito: reconstruível a partir das colunas, sem
-    depender da ordem das linhas. A bateria entra porque a mesma escala com a
-    mesma semente é medida duas vezes — na bateria de escala e na cadeia do
+    depender da ordem das linhas. O experimento entra porque o mesmo tamanho com
+    a mesma semente é medida duas vezes — na bateria por tamanho e na cadeia do
     oráculo —, e são corridas distintas.
+
+    **A semente entra no identificador mesmo não sendo mais coluna.** É ela que
+    separa duas corridas do mesmo alvo com sementes diferentes; sem ela, rodar
+    com ``--seed`` distinto produziria chave duplicada em silêncio.
 
     Parameters
     ----------
-    battery : str
-        Quem produziu: ``escala``, ``oraculo`` ou ``corretude``.
+    experiment : str
+        Qual bateria: ``size``, ``oracle_chain`` ou ``equivalence``.
     paradigm : str
         ``mongodb`` ou ``neo4j``.
     target : str
@@ -89,7 +145,7 @@ def run_id(
     seed : int, optional
         Semente do gerador; ausente nos datasets que não são gerados.
     origin : str, optional
-        ``arquivo`` ou ``banco``, quando o mesmo alvo é lido por mais de um
+        ``file`` ou ``database``, quando o mesmo alvo é lido por mais de um
         caminho.
 
     Returns
@@ -99,12 +155,12 @@ def run_id(
 
     Examples
     --------
-    >>> run_id("escala", "mongodb", "up_a_small", seed=23)
-    'escala-mongodb-up_a_small-23'
-    >>> run_id("corretude", "mongodb", "northwind", origin="arquivo")
-    'corretude-mongodb-northwind-arquivo'
+    >>> run_id("size", "mongodb", "up_a_small", seed=23)
+    'size-mongodb-up_a_small-23'
+    >>> run_id("equivalence", "mongodb", "northwind", origin="file")
+    'equivalence-mongodb-northwind-file'
     """
-    parts = [battery, paradigm, target]
+    parts = [experiment, paradigm, target]
 
     if seed is not None:
         parts.append(str(seed))
@@ -113,6 +169,148 @@ def run_id(
         parts.append(origin)
 
     return "-".join(parts)
+
+
+def normalized(total_time: float, query_time: float) -> str:
+    """Dividir o tempo do pipeline pelo da query de referência.
+
+    A métrica do artigo do U-Schema (Information Systems 104, 2022): *"the
+    normalized value (inference time divided by query time)"*. Serve para
+    comparar com a Table 4 de lá sem depender da máquina — ver
+    ``scripts/baseline.py`` para a query e a justificativa.
+
+    O dividendo é o **pipeline inteiro** (``total_time``), que é o que o artigo
+    chama de *inference*; a coluna ``inference_time`` do nosso esquema é outra
+    coisa e fica em ~0,00s.
+
+    Parameters
+    ----------
+    total_time : float
+        Segundos do pipeline: extração + inferência + escrita.
+    query_time : float
+        Segundos da query de referência, no mesmo banco.
+
+    Returns
+    -------
+    str
+        A razão com duas casas, pronta para o CSV.
+
+    Raises
+    ------
+    ValueError
+        Se ``query_time`` for zero ou negativo — divisor inválido indica
+        cronômetro quebrado, não resultado a gravar.
+
+    Examples
+    --------
+    >>> normalized(23.452, 2.366)
+    '9.91'
+    """
+    if query_time <= 0:
+        raise ValueError(f"query_time inválido como divisor: {query_time!r}")
+
+    return f"{total_time / query_time:.2f}"
+
+
+def entity_name(source: str) -> str:
+    """Nome do ``EntityType`` no XMI a partir do nome da origem.
+
+    Casa a origem (``orders``) com o nome que o modelo usa (``Orders``), que é o
+    vocabulário das mensagens de ``divergences`` — sem isso o log da bateria
+    nomearia as entidades de um jeito e o CSV de outro. A regra é a mesma que o
+    ``SchemaInference`` usa para nomear a entidade: capitalizar pelo Inflector,
+    que **não** pluraliza nem mexe em underscore.
+
+    Parameters
+    ----------
+    source : str
+        Nome da coleção (MongoDB) ou do label (Neo4j).
+
+    Returns
+    -------
+    str
+        Nome do ``EntityType`` correspondente.
+
+    Raises
+    ------
+    ValueError
+        Se o Inflector devolver ``None``, o que só ocorre para entrada ``None``.
+
+    Examples
+    --------
+    >>> entity_name("purchase_orders")
+    'Purchase_orders'
+    >>> entity_name("User")
+    'User'
+    """
+    name = _INFLECTOR.capitalize(source)
+
+    if name is None:
+        raise ValueError(f"nome de origem sem capitalização possível: {source!r}")
+
+    return name
+
+
+def modeled_counts(model: EObject) -> dict[str, int]:
+    """Somar o ``count`` das variações de cada entidade de um ``USchema``.
+
+    Quanto **aquele modelo** diz ter visto, por entidade. Vale para os dois
+    produtores e para os dois paradigmas — o grafo tem núcleo de construção
+    próprio, mas o metamodelo é o mesmo.
+
+    Não alimenta tabela nenhuma: as baterias confrontam este valor com a
+    contagem no banco e **imprimem** o par, que é como a subcontagem do bug
+    **#8** fica observável numa corrida.
+
+    Lida só ``entities``; ``relationships`` (``WATCHED``, ``FAVORITE``) ficam de
+    fora, porque o confronto é contra uma contagem de nós ou documentos.
+
+    Parameters
+    ----------
+    model : EObject
+        Raiz de um ``USchema``, do porte ou carregada de um XMI-oráculo.
+
+    Returns
+    -------
+    dict of str to int
+        Nome do ``EntityType`` para a soma dos ``count`` das suas variações.
+    """
+    return {entity.name: sum(v.count for v in entity.variations) for entity in model.entities}
+
+
+def name_sides(message: str, subject: str, reference: str) -> str:
+    """Trocar os rótulos posicionais do harness pelos nomes dos dois lados.
+
+    O ``compare()`` herda do ``USchemaCompareMain`` os rótulos ``Schema1`` e
+    ``Schema2``, que não dizem qual lado é o porte. Como a convenção é
+    ``compare(referência, porte)`` em todos os pontos de chamada, ``Schema1`` é
+    sempre a referência e ``Schema2`` sempre o sujeito.
+
+    A substituição é feita **na gravação**, não no harness: os rótulos do
+    ``equivalence.py`` são fiéis ao Java, e a legibilidade é requisito do CSV de
+    evidência, não do comparador.
+
+    Parameters
+    ----------
+    message : str
+        Mensagem crua de :class:`~uschema.validation.equivalence.Divergence`.
+    subject : str
+        Quem está sendo avaliado — hoje sempre ``port``.
+    reference : str
+        Contra o que se comparou: ``resources`` ou ``seeded_oracle``.
+
+    Returns
+    -------
+    str
+        Mensagem com os dois lados nomeados.
+
+    Examples
+    --------
+    >>> name_sides("Count differs: Schema1 A.1 has 4, Schema2 A.2 has 7",
+    ...            "port", "resources")
+    'Count differs: resources A.1 has 4, port A.2 has 7'
+    """
+    return message.replace("Schema1", reference).replace("Schema2", subject)
 
 
 def _check_header(path: Path, header: list[str]) -> bool:
@@ -151,7 +349,7 @@ class Results:
     Examples
     --------
     >>> with Results(Path("results")) as tables:  # doctest: +SKIP
-    ...     tables.add_run({"corrida_id": "escala-neo4j-movies_min-23", ...})
+    ...     tables.add_run({"run_id": "size-neo4j-movies_min-23", ...})
     """
 
     def __init__(self, directory: Path) -> None:
@@ -196,36 +394,85 @@ class Results:
         self._files[table].flush()
 
     def add_run(self, row: Mapping[str, Any]) -> None:
-        """Gravar a linha de uma corrida."""
-        self._write("corridas", row)
+        """Gravar a linha de uma corrida do **porte**.
 
-    def add_entity(self, run: str, entity: str, actual: int, model: int) -> None:
-        """Gravar o real contra o modelo de uma entidade."""
-        self._write(
-            "entidades",
-            {"corrida_id": run, "entidade": entity, "real": actual, "modelo": model},
-        )
+        Só o porte entra aqui; o oráculo tem :meth:`add_oracle`. Por isso
+        ``run_id`` é chave sozinho e as três parcelas de tempo nunca são vazias.
+        """
+        self._write("runs", row)
 
-    def add_comparison(self, run: str, reference: str, equivalent: bool, divergences: int) -> None:
-        """Gravar o veredito de um confronto com um XMI de referência."""
+    def add_oracle(self, run: str, seconds: float, query_time: float) -> None:
+        """Gravar o relógio de parede do oráculo Java para uma corrida.
+
+        Tabela própria: o container não separa extração de inferência, então o
+        único número que ele devolve é o total do ``docker run`` — que inclui
+        ~18s de boot de Maven, JVM e Spark. Junta com ``runs`` por ``run_id``.
+
+        O ``query_time`` não é regravado aqui — mora em ``runs.csv``, e é o
+        **mesmo** divisor dos dois lados, porque a query roda uma vez por
+        instância. Só o ``normalized`` entra, para que porte e oráculo sejam
+        lidos lado a lado contra a Table 4 do artigo.
+        """
         self._write(
-            "comparacoes",
+            "oracle",
             {
-                "corrida_id": run,
-                "referencia": reference,
-                "equivalente": equivalent,
-                "n_divergencias": divergences,
+                "run_id": run,
+                "total_time": f"{seconds:.2f}",
+                "normalized": normalized(seconds, query_time),
             },
         )
 
-    def add_divergence(self, run: str, reference: str, category: str, message: str) -> None:
-        """Gravar uma divergência do relatório do harness."""
+    def add_comparison(
+        self, run: str, subject: str, reference: str, result: ComparisonResult
+    ) -> None:
+        """Gravar um confronto **e todas as suas divergências**.
+
+        As duas tabelas são escritas juntas, num método só, porque os
+        contadores de ``comparisons`` são a contagem das linhas de
+        ``divergences``: separá-los deixaria as duas versões do mesmo fato
+        livres para divergir.
+
+        Parameters
+        ----------
+        run : str
+            Identificador da corrida.
+        subject : str
+            Quem está sendo avaliado — hoje sempre ``PORT``.
+        reference : str
+            ``RESOURCES`` ou ``SEEDED_ORACLE``.
+        result : ComparisonResult
+            Saída do ``compare()``. O veredito e a fatalidade de cada
+            divergência são lidos daqui, não recalculados.
+        """
+        fatal = [d for d in result.divergences if d.fatal]
+
         self._write(
-            "divergencias",
+            "comparisons",
             {
-                "corrida_id": run,
-                "referencia": reference,
-                "categoria": category,
-                "mensagem": message,
+                "run_id": run,
+                "subject": subject,
+                "reference": reference,
+                "equivalent": result.equivalent,
+                "fatal_divergences": len(fatal),
+                "non_fatal_divergences": len(result.divergences) - len(fatal),
             },
         )
+
+        self._add_divergences(run, subject, reference, result.divergences)
+
+    def _add_divergences(
+        self, run: str, subject: str, reference: str, divergences: Iterable[Divergence]
+    ) -> None:
+        """Gravar o detalhe de um confronto, uma linha por divergência."""
+        for divergence in divergences:
+            self._write(
+                "divergences",
+                {
+                    "run_id": run,
+                    "subject": subject,
+                    "reference": reference,
+                    "category": divergence.category.value,
+                    "fatal": divergence.fatal,
+                    "message": name_sides(divergence.message, subject, reference),
+                },
+            )

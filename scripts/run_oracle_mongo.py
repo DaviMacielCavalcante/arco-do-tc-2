@@ -6,7 +6,7 @@ idêntica e mesma máquina** só existia no grafo. No documento, o "8,7x do
 oráculo" citado em §3.2 vem das tabelas do artigo — outra máquina, medida que
 ninguém aqui reproduziu.
 
-Por rota e escala: regera o banco com semente fixa, roda o **porte** (driver
+Por rota e tamanho: regera o banco com semente fixa, roda o **porte** (driver
 nativo -> núcleo da Fase 1) e o **oráculo Java em Docker** (`--kind mongodb`)
 sobre **o mesmo banco**, e compara os dois XMIs.
 
@@ -14,7 +14,7 @@ Não há comparação contra `resources/`: não existe XMI-oráculo publicado do
 Profiles em documento — é justamente o que esta bateria produz.
 
 Custo desconhecido: o Spark do container nunca rodou sobre 800 mil documentos,
-só sobre os 397 do Northwind (Fase 0.5). Comece pelas escalas menores.
+só sobre os 397 do Northwind (Fase 0.5). Comece pelos tamanhos menores.
 
     uv run python scripts/run_oracle_mongo.py --seed 23 --sizes small
     uv run python scripts/run_oracle_mongo.py --seed 23 --routes A --sizes small medium
@@ -25,21 +25,29 @@ import subprocess
 import sys
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from pyecore.ecore import EPackage
+from pyecore.ecore import EObject, EPackage
 from pymongo import MongoClient
 
-from output import Results, run_id
+from baseline import mongo_query_time
+from output import (
+    PORT,
+    SEEDED_ORACLE,
+    Results,
+    entity_name,
+    modeled_counts,
+    normalized,
+    run_id,
+)
+from runs import MongoOracleRun
 from uschema.extractors.mongo import extract_database_triples
 from uschema.extractors.triple import triples_from_rows
 from uschema.inference.build_uschema import BuildUSchema
 from uschema.metamodel.registry import load_metamodel
 from uschema.metamodel.xmi import load_model, save_model
-from uschema.naming.inflector import Inflector
-from uschema.validation.equivalence import ComparisonResult, compare
+from uschema.validation.equivalence import compare
 
 DEFAULT_SIZES = ["small", "medium", "large", "larger"]
 DEFAULT_ROUTES = ["A", "B"]
@@ -50,21 +58,9 @@ PORT_OUTPUT = ROOT / "out" / "porte"
 ORACLE_OUTPUT = ROOT / "out" / "oraculo"
 IMAGE = "extrator-uschema"
 
-
-@dataclass(frozen=True)
-class OracleRun:
-    """Uma corrida completa sobre um banco, com os dois lados medidos."""
-
-    database: str
-    route: str
-    size: str
-    t_generation: float
-    t_extraction: float
-    t_inference: float
-    t_oracle: float
-    triple_rows: int
-    counts: dict[str, tuple[int, int]]
-    result: ComparisonResult
+#: Semente padrão das baterias. Sobrescrevível com `--seed`; fixa por padrão
+#: para que a corrida seja reproduzível sem o operador ter de lembrar do valor.
+DEFAULT_SEED = 23
 
 
 def database_name(route: str, size: str) -> str:
@@ -159,11 +155,11 @@ def run_oracle(database: str, collections: list[str], uri: str, seed: int, memor
     return target
 
 
-def measure(route: str, size: str, uri: str, seed: int, pkg: EPackage, memory: str) -> OracleRun:
+def measure(
+    route: str, size: str, uri: str, seed: int, pkg: EPackage, memory: str
+) -> MongoOracleRun:
     """Roda porte e oráculo sobre o mesmo banco e compara os dois XMIs."""
     database = database_name(route, size)
-
-    inflector = Inflector()
 
     # Mapping, não dict: Database é invariante no parâmetro de tipo.
     client: MongoClient[Mapping[str, Any]] = MongoClient(uri)
@@ -190,7 +186,11 @@ def measure(route: str, size: str, uri: str, seed: int, pkg: EPackage, memory: s
 
     t_inference = time.perf_counter() - start
 
+    start = time.perf_counter()
+
     save_model(port, PORT_OUTPUT / f"mongo_{database}_seed{seed}.xmi")
+
+    t_write = time.perf_counter() - start
 
     start = time.perf_counter()
 
@@ -198,62 +198,86 @@ def measure(route: str, size: str, uri: str, seed: int, pkg: EPackage, memory: s
 
     t_oracle = time.perf_counter() - start
 
-    in_model = {entity.name: sum(v.count for v in entity.variations) for entity in port.entities}
+    oracle = load_model(oracle_xmi, pkg)
 
-    return OracleRun(
+    # A query de referência roda por último, depois do porte E do oráculo:
+    # antes, aqueceria o cache dos dois. Ver `baseline.py`.
+    client = MongoClient(uri)
+    try:
+        t_query = mongo_query_time(client[database])
+    finally:
+        client.close()
+
+    return MongoOracleRun(
         database=database,
         route=route,
         size=size,
-        t_generation=0.0,
         t_extraction=t_extraction,
         t_inference=t_inference,
+        t_write=t_write,
         t_oracle=t_oracle,
-        triple_rows=len(rows),
-        counts={
-            name: (actual[name], in_model.get(inflector.capitalize(name), 0))
-            for name in collections
-        },
-        result=compare(load_model(oracle_xmi, pkg), port),
+        t_query=t_query,
+        counts=side_by_side(collections, actual, port, oracle),
+        result=compare(oracle, port),
     )
 
 
-def record(tables: Results, seed: int, run: OracleRun) -> None:
-    """Distribui a corrida pelas quatro tabelas."""
-    key = run_id("oraculo", "mongodb", run.database, seed=seed)
+def side_by_side(
+    collections: list[str], actual: dict[str, int], port: EObject, oracle: EObject
+) -> dict[str, tuple[int, int, int]]:
+    """Alinhar real, porte e oráculo por entidade.
+
+    Chaveado pelo nome do ``EntityType`` no XMI, não pelo da coleção: é o
+    vocabulário de ``divergences``, e o que o log imprime tem de casar com ele.
+    """
+    in_port = modeled_counts(port)
+    in_oracle = modeled_counts(oracle)
+
+    return {
+        entity_name(name): (
+            actual[name],
+            in_port.get(entity_name(name), 0),
+            in_oracle.get(entity_name(name), 0),
+        )
+        for name in collections
+    }
+
+
+def record(tables: Results, seed: int, run: MongoOracleRun) -> None:
+    """Distribui a corrida pelas tabelas de resultado.
+
+    O porte vai para `runs`, o oráculo para `oracle` — tabelas separadas porque
+    o container devolve um número só, o relógio de parede do `docker run`.
+    """
+    key = run_id("oracle_chain", "mongodb", run.database, seed=seed)
 
     tables.add_run(
         {
-            "corrida_id": key,
-            "bateria": "oraculo",
-            "paradigma": "mongodb",
-            "semente": seed,
-            "escala": run.size,
-            "rota": run.route,
-            "alvo": run.database,
-            "origem": "banco",
-            "t_geracao": f"{run.t_generation:.2f}",
-            "t_extracao": f"{run.t_extraction:.2f}",
-            "t_inferencia": f"{run.t_inference:.2f}",
-            "t_oraculo": f"{run.t_oracle:.2f}",
-            "linhas_tripla": run.triple_rows,
+            "run_id": key,
+            "experiment": "oracle_chain",
+            "size": run.size,
+            "paradigm": "mongodb",
+            "route": run.route,
+            "target": run.database,
+            "origin": "database",
+            "total_time": f"{run.total:.2f}",
+            "extraction_time": f"{run.t_extraction:.2f}",
+            "inference_time": f"{run.t_inference:.2f}",
+            "write_time": f"{run.t_write:.2f}",
+            "query_time": f"{run.t_query:.4f}",
+            "normalized": normalized(run.total, run.t_query),
         }
     )
 
-    for entity, (actual, model) in run.counts.items():
-        tables.add_entity(key, entity, actual, model)
+    tables.add_oracle(key, run.t_oracle, run.t_query)
 
-    reference = "oraculo_semeado"
-
-    tables.add_comparison(key, reference, run.result.equivalent, len(run.result.divergences))
-
-    for divergence in run.result.divergences:
-        tables.add_divergence(key, reference, divergence.category.value, divergence.message)
+    tables.add_comparison(key, PORT, SEEDED_ORACLE, run.result)
 
 
 def main() -> None:
     """Roda a cadeia porte x oráculo nas combinações pedidas e acumula as tabelas."""
     ap = argparse.ArgumentParser(description="Porte x oráculo semeado, MongoDB (Fase 3.1)")
-    ap.add_argument("--seed", type=int, required=True)
+    ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     ap.add_argument("--uri", default="mongodb://localhost:27017")
     ap.add_argument("--routes", nargs="+", choices=DEFAULT_ROUTES, default=DEFAULT_ROUTES)
     ap.add_argument("--sizes", nargs="+", choices=DEFAULT_SIZES, default=DEFAULT_SIZES)
@@ -271,30 +295,34 @@ def main() -> None:
             for size in args.sizes:
                 print(f"\n=== seed {args.seed} | rota {route} | {size} ===", flush=True)
 
+                # A geração é cronometrada só para o log: não é medida de
+                # produtor nenhum, e saiu do esquema dos CSVs.
                 t_generation = generate(route, size, args.uri, args.seed)
 
-                run = replace(
-                    measure(route, size, args.uri, args.seed, pkg, args.memory),
-                    t_generation=t_generation,
-                )
+                run = measure(route, size, args.uri, args.seed, pkg, args.memory)
 
                 print(
-                    f"  geracao={run.t_generation:.2f}s"
+                    f"  geracao={t_generation:.2f}s"
                     f"  extracao={run.t_extraction:.2f}s"
                     f"  inferencia={run.t_inference:.2f}s"
+                    f"  escrita={run.t_write:.2f}s"
+                    f"  porte={run.total:.2f}s"
                     f"  oraculo={run.t_oracle:.2f}s"
-                    f"  triplas={run.triple_rows}"
+                    f"  query={run.t_query:.2f}s"
+                    f"  norm={normalized(run.total, run.t_query)}x"
                     f"  equivalente={run.result.equivalent}"
                     f"  divergencias={len(run.result.divergences)}",
                     flush=True,
                 )
 
-                for entity, (actual, model) in run.counts.items():
-                    print(f"    {entity}: real={actual} modelo={model} ({model / actual:.1%})")
+                for entity, (actual, in_port, in_oracle) in run.counts.items():
+                    print(
+                        f"    {entity}: real={actual}"
+                        f"  porte={in_port} ({in_port / actual:.1%})"
+                        f"  oraculo={in_oracle} ({in_oracle / actual:.1%})"
+                    )
 
                 record(tables, args.seed, run)
-
-    print(f"\n-> {args.output_dir}")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,16 @@
 # scripts/ — baterias de avaliação e geradores (Fase 3)
 
-Scripts de execução das baterias de **corretude** e **escala**, fora do pacote
+Scripts de execução das baterias de **equivalência** e **volume**, fora do pacote
 importável.
+
+> **O esquema das tabelas que estas baterias escrevem está em
+> [`dicionario_de_dados.md`](../dicionario_de_dados.md)** — o que cada coluna
+> significa, quem produziu o número e as leituras que induzem a erro. Este
+> README descreve *como rodar*; o dicionário, *o que sai*.
+>
+> Esquema revisado em 15/08/2026: semente única com padrão, tabela `oracle.csv`
+> própria, e as colunas `query_time`/`normalized` do artigo. **Ainda não
+> medido** — o `results/` em disco é anterior a elas.
 
 ## Geradores de dataset (vindos do repo original, autoria do Davi)
 
@@ -21,11 +30,11 @@ Quatro tamanhos: 100k / 200k / 400k / 800k `User` (50k / 100k / 200k / 400k `Mov
 > **Sem `--seed`, cada execução produz um dataset diferente** — mesmos totais,
 > divisão entre variações diferente (o sorteio de users isolados e favoritos
 > muda). Consequência medida em 31/07/2026, antes de a semente existir: regerar
-> as escalas `small`/`medium`/`large` do grafo fez o `compare()` contra os
+> os tamanhos `small`/`medium`/`large` do grafo fez o `compare()` contra os
 > XMIs-oráculo de `resources/` acusar **7 divergências não-fatais de `count`**
 > em cada uma, enquanto o `larger` (não regerado, instância original) fechou com
 > **zero**. Não é defeito do porte — é o dataset que mudou. **Provado nas quatro
-> escalas em 02/08/2026:** com a semente fixa e o **oráculo Java rodado sobre a
+> tamanhos em 02/08/2026:** com a semente fixa e o **oráculo Java rodado sobre a
 > mesma instância**, o `compare()` dá `equivalent=True` com **zero**
 > divergências em todas. Contra `resources/` continuam aparecendo as 7, porque
 > aqueles XMIs vêm de uma instância de semente desconhecida — e essa é a
@@ -35,12 +44,12 @@ Quatro tamanhos: 100k / 200k / 400k / 800k `User` (50k / 100k / 200k / 400k `Mov
 - **Rota B**: `_id` inteiro + ~15% arrays vazios (cenário relacional→NoSQL —
   exercita #6 e #7).
 
-## Corretude do Northwind — `run_northwind.py`
+## Equivalência do Northwind — `run_northwind.py`
 
 Roda o dataset pelos **dois caminhos de leitura** — os 17 JSONs direto do disco
 e o banco pelo cursor do `pymongo` — e compara cada um com
 `resources/mongodb/model_northwind.xmi`, gravando as divergências no
-`results/` com a coluna `origem`.
+`results/` com a coluna `origin` (`file`/`database`).
 
 ```bash
 uv run python scripts/run_northwind.py
@@ -52,7 +61,7 @@ citável não é esse número — é `equivalent=True` mais **14/17** coleções
 fechando a contagem, que vale nos dois caminhos.
 
 Os JSONs estão versionados em `resources/datasets/northwind/` (BSD 2-Clause, com
-o `LICENSE` junto), então o caminho `arquivo` **roda sem banco e sem dependência
+o `LICENSE` junto), então o caminho `file` **roda sem banco e sem dependência
 externa**. O script imprime o SHA-256 do conjunto a cada corrida, prendendo o
 resultado a uma versão do dataset.
 
@@ -62,14 +71,14 @@ ganharia uma entidade que o oráculo não tem.
 
 ## Cadeia porte × oráculo — `run_oracle_neo4j.py`, `run_oracle_mongo.py`
 
-Por escala: limpa, regera com a semente, roda o porte, roda o **oráculo Java em
+Por tamanho: limpa, regera com a semente, roda o porte, roda o **oráculo Java em
 Docker sobre a mesma instância** e compara os dois XMIs. É a comparação mais
 forte que o projeto faz — mesma entrada, duas implementações. Exige a imagem
 buildada (`docker build -t extrator-uschema oracle/`) e o banco no ar.
 
 ```bash
 uv run python scripts/run_oracle_neo4j.py --seed 23
-uv run python scripts/run_oracle_neo4j.py --seed 23 --scales larger --memory 10g
+uv run python scripts/run_oracle_neo4j.py --seed 23 --sizes larger --memory 10g
 uv run python scripts/run_oracle_mongo.py --seed 23 --sizes small
 ```
 
@@ -78,10 +87,11 @@ contraste: dá 7 divergências não-fatais de `count`, porque aqueles XMIs vêm 
 uma instância de semente desconhecida.
 
 No **documento** não existe XMI-oráculo publicado do User Profiles — é
-justamente o que essa bateria produz. Ela foi escrita em 02/08/2026 e **ainda
-não rodou**: o `--kind mongodb` do container só foi exercitado sobre os 397
-documentos do Northwind, na Fase 0.5, então o custo sobre 800 mil é
-desconhecido. Comece pelas escalas menores.
+justamente o que essa bateria produz. Rodou pela primeira vez em 02/08/2026, nas
+oito combinações: o risco declarado (o `--kind mongodb` do container só tinha
+visto os 397 documentos do Northwind, na Fase 0.5) não se materializou, e o
+container é quase plano no documento — ~18s de boot mais ~6s de trabalho real
+sobre 800 mil documentos.
 
 Uma diferença de interface entre os dois, que já custou tempo: no Neo4j o
 `--db` é só o **nome do schema** (o conector lê sempre o banco padrão); no
@@ -91,19 +101,111 @@ usa — divergência de `SCHEMA_NAME` é fatal no harness.
 
 O XMI do oráculo é preservado com a semente no nome
 (`out/oraculo/neo4j_<schema>_seed<N>.xmi`) para que a corrida seguinte não
-sobrescreva a evidência da anterior. O `t_oraculo` é **relógio de parede do
-container** — inclui boot de Maven, JVM e Spark (~10s fixos), então não é
-comparável ao cronômetro interno do Java nem citável em escala pequena.
+sobrescreva a evidência da anterior. O `total_time` da linha `producer=oracle`
+é **relógio de parede do container** — inclui boot de Maven, JVM e Spark, que no
+MongoDB são ~18s fixos, então não é comparável ao cronômetro interno do Java nem
+citável em volume pequeno.
 
-## Baterias de escala — `run_scale_mongo.py`, `run_scale_neo4j.py`, `run_scale_suite.sh`
+## Baterias por tamanho — `run_size_mongo.py`, `run_size_neo4j.py`
 
-`run_scale_suite.sh` encadeia N sementes nas duas baterias de escala, **sequencialmente**
-(padrão: 23 69 207; ou exatamente 3 passadas por argumento). Começa chamando
-`clean_databases.py`, que apaga só os 8 bancos `up_*` e o grafo — nunca o
-`northwind`.
+Uma bateria por paradigma, quatro tamanhos cada. Não rode as duas em paralelo:
+os clientes Python não disputam, mas mongod e Neo4j disputam CPU e disco, e os
+tempos vão para a avaliação.
 
-Não rode as duas em paralelo: os clientes Python não disputam, mas mongod e
-Neo4j disputam CPU e disco, e os tempos vão para o capítulo.
+## Orquestração — `run_suite.sh`
+
+Encadeia **tudo**, sequencialmente, com log em `logs/`: limpeza inicial,
+Northwind, as duas cadeias do oráculo e as duas por tamanho.
+
+A limpeza inicial é o `clean_databases.py`, que também é chamado pelas duas
+baterias do grafo antes de cada tamanho. Apaga **só** os bancos `up_*` do MongoDB
+e o grafo do Neo4j — o `northwind` nunca é tocado, porque é dataset real
+versionado e não se regenera por semente.
+
+```bash
+./scripts/run_suite.sh            # semente padrão dos scripts (23)
+./scripts/run_suite.sh 69         # outra semente
+```
+
+Substituiu o `run_scale_suite.sh`, que orquestrava só o tamanho e existia para
+varrer três sementes — com a semente única, o que restava a orquestrar era a
+cadeia inteira.
+
+Sem argumento ele **não passa** `--seed`: vale o `DEFAULT_SEED` de cada bateria.
+Duplicar o valor no shell abriria espaço para os dois divergirem.
+
+**Recusa repetir uma semente já gravada** (exit 3). As baterias gravam em
+append, então repetir não sobrescreve — duplica, e a duplicata só apareceria
+depois, num `uniq -d`. Já custou duas sessões.
+
+## Query de referência — `baseline.py`
+
+O divisor da coluna `normalized`: a média de filmes assistidos por usuário, uma
+query por paradigma. Não faz parte do pipeline — existe só para tornar o tempo
+comparável com a Table 4 do artigo, que é medida noutra máquina (um i7-6700 de
+2015).
+
+Roda **por último** em cada corrida, depois do porte e do oráculo: antes,
+aqueceria o cache e aceleraria a extração medida.
+
+## Verificações fora da suíte — os três `check_*`
+
+Não entram no `run_suite.sh`, não escrevem CSV e não têm semente: **imprimem** e
+saem com código de erro. Rodam à mão, e cada um cobre uma coisa que as baterias
+**não conseguem** cobrir — é por isso que sobrevivem ao fim das Fases 2 e 3, e
+não por inércia.
+
+```bash
+uv run python scripts/check_northwind_invariants.py
+uv run python scripts/check_extraction_neo4j.py --uri bolt://localhost:7687 --drop
+uv run python scripts/check_extraction_mongo.py --uri mongodb://localhost:27017 \
+    --db verificacao_manual --drop
+```
+
+### `check_northwind_invariants.py` — a única afirmação absoluta
+
+Lê o XMI e afirma o que ele **contém**: 19 `EntityType`, 17 raiz, as duas
+não-raiz sendo `Detail` e `_id`, e o `Aggregate` de `Detail` com
+`upperBound=-1`/`optional=true` em `Orders` e `Purchase_orders`. Confirmado
+idêntico no XMI do oráculo e no do porte em 02/08/2026.
+
+**Todo o resto do aparato compara um modelo com outro.** O `compare()` afirma que
+os dois lados são iguais, nunca o que eles contêm: se porte e oráculo perdessem
+`Detail` juntos, ele seguiria dando `equivalent=True`. Este script é a única
+coisa que checa o modelo contra um valor absoluto gravado, e o invariante é
+**livre de contagem** — escapa da ordem-dependência do #8.
+
+É a exceção declarada à regra "todo número sai de uma corrida registrada"
+(`todolist_fase3.md` §3.4): imprime e não grava, mas é reproduzível por um
+comando.
+
+### `check_extraction_neo4j.py` — a premissa do N1, que só um servidor real dá
+
+Semeia um nó `:Zebra:Apple` **nessa ordem de inserção** e observa se o `N1` se
+manifesta: `node_archetype` ordena os labels próprios, `_relationship_archetype`
+**não** ordena os do `refsTo`, então o mesmo nó físico pode virar dois
+`EntityType`.
+
+Os unit tests fixam os dois lados da assimetria com fakes
+([`test_extractors_neo4j.py:213,259`](../tests/unit/test_extractors_neo4j.py)),
+mas a **premissa** do bug é que um Neo4j real devolve `labels()` em ordem de
+inserção, e não alfabética — propriedade do servidor, que nenhum fake
+estabelece. As baterias também não chegam lá: o `gen_userprofiles_neo4j.py` só
+cria nó de label único (`CREATE (u:User)`, `CREATE (m:Movie)`), que é a razão de
+o `N1` nunca ter disparado numa corrida. É o artefato que sustenta essa
+limitação na 3.4.
+
+### `check_extraction_mongo.py` — registro do gate 2.1
+
+Fumaça do cursor `pymongo` real, o caso `Int64` e o Northwind pelas 17 coleções.
+**É o mais fraco dos três**, e vale saber por quê antes de confiar nele como
+evidência: o caminho do cursor real já é exercitado a cada corrida pelo
+`run_northwind.py` (`origin=database`), e o unit test do `Int64` constrói o mesmo
+objeto que o driver devolveria — rodar contra servidor não estabelece nada além.
+
+O que ele ainda é o único a tocar: nenhum dataset da fase tem `Int64`
+(**zero** `$numberLong` nos 17 JSONs do Northwind), então a ordem de despacho
+`Int64` → `bool` → `int` nunca é exercitada contra dado que veio pelo *wire*.
 
 ## Saída — quatro tabelas, um grão cada
 
@@ -114,50 +216,66 @@ uma hora interrompida preserve o que já mediu.
 
 | Arquivo | Grão |
 |---|---|
-| `corridas.csv` | uma corrida — tempos e metadados |
-| `entidades.csv` | uma entidade por corrida — real contra modelo |
-| `comparacoes.csv` | um confronto com um XMI de referência |
-| `divergencias.csv` | uma divergência |
+| `runs.csv` | uma execução do **porte** — tempos e metadados |
+| `oracle.csv` | uma execução do **oráculo Java** — só o relógio de parede |
+| `comparisons.csv` | um confronto com um XMI de referência |
+| `divergences.csv` | uma divergência |
 
-Unidas por `corrida_id`, que é determinístico a partir de bateria, paradigma,
-alvo, semente e origem (`escala-mongodb-up_a_small-23`,
-`oraculo-neo4j-movies_min-23`, `corretude-mongodb-northwind-arquivo`).
+A contagem por entidade (real contra modelo) **não vira CSV** — as tabelas
+carregam as métricas do artigo e nada além. Ela segue calculada e **impressa** no
+log de cada bateria.
 
-A versão anterior dava um CSV por bateria e misturava os três grãos no mesmo
-arquivo — tempo da corrida repetido em cada linha de entidade, veredito repetido
-em cada linha de divergência —, o que obrigava a deduplicar antes de qualquer
-análise. `capturado` saiu de vez: é `modelo / real`, conta da análise.
+**O significado de cada coluna está em [`dicionario_de_dados.md`](../dicionario_de_dados.md).**
+O que segue aqui é só o que muda a forma de rodar as baterias.
+
+Unidas por `run_id`, determinístico a partir de experimento, paradigma, alvo,
+semente e origem (`size-mongodb-up_a_small-23`,
+`oracle_chain-neo4j-movies_min-23`, `equivalence-mongodb-northwind-file`).
+
+**Uma corrida `oracle_chain` grava em `runs.csv` e em `oracle.csv`**, uma linha
+em cada. Em `runs.csv` o `run_id` é chave sozinho.
 
 Os XMIs vão para **`out/porte/`**, separados dos do oráculo (`out/oraculo/`) e
 dos de referência (`resources/`) — a convenção está em `resources/README.md`,
 "Onde cada XMI mora".
 
-**`t_limpeza` é coluna separada de `t_geracao`**, e isso é lição aprendida: na
-primeira bateria o gerador rodava com `--drop` e o cronômetro engolia a deleção
-do grafo anterior — `small` da semente 23 marcou 7,60s e o das sementes 69/207
-marcou ~127s, porque estavam apagando 10,2M arestas da corrida anterior. Apagar
-um grafo grande é custo real do paradigma, mas não é geração. Só o grafo
-preenche essa coluna: dropar um banco no Mongo é instantâneo.
+**A limpeza tem tabela própria**, e isso é lição aprendida: na primeira bateria o
+gerador rodava com `--drop` e o cronômetro da geração engolia a deleção do grafo
+anterior — `small` da semente 23 marcou 7,60s e o das sementes 69/207 marcou
+~127s, porque estavam apagando 10,2M arestas da corrida anterior. Apagar um
+grafo grande é custo real do paradigma, mas não é geração — nem é medida de
+produtor nenhum, que é por que não cabe em `runs.csv`. Só o grafo preenche:
+dropar um banco no Mongo é instantâneo.
+
+**O tempo de geração não é mais gravado.** Ele existia para refutar a afirmação
+do guia de que a geração custaria mais que a extração — refutada (no `larger` do
+grafo, ~180s de geração contra ~440s de extração). Segue impresso no log das
+baterias, fora dos CSVs: cronometrar um script descartável nosso não é evidência
+sobre o porte.
 
 ## Baterias — protocolo
 
-- Corretude: Northwind (dois caminhos de leitura) e User Profiles em grafo
-  (4 escalas × oráculo semeado) → comparar via `uschema.validation`. **Sakila
+- Equivalência: Northwind (dois caminhos de leitura) e User Profiles em grafo
+  (4 tamanhos × oráculo semeado) → comparar via `uschema.validation`. **Sakila
   foi descartado** — não existe versão em grafo publicada, e a consequência é a
   limitação declarada de haver um único dataset real (`todolist_fase3.md` §3.1).
-- Escala: rodar os quatro tamanhos, **cronometrar a extração e a inferência em
+- Volume: rodar os quatro tamanhos, **cronometrar a extração e a inferência em
   processo** (a leitura é por driver nativo desde a 2.0 — não há log de executor
   Spark), confirmar leitura integral (soma dos `count` = volume gerado), comparar
   a **tendência** (não o tempo absoluto).
-- Ordem sugerida numa re-execução completa: `run_northwind.py` (segundos),
-  `run_oracle_mongo.py --sizes small` (custo desconhecido, ver acima),
-  `run_oracle_neo4j.py`, e por fim `run_scale_suite.sh` (~1h).
+- Re-execução completa: `./scripts/run_suite.sh`, que já encadeia tudo na ordem
+  certa (~25 min na semente padrão).
 
 ## Números-alvo
 
 O critério é **casar com o oráculo**, não com o volume real — o **#8** é
 replicado de propósito (`bugs_originais.md` §#8), e o oráculo também não o
 corrige (não há patch `0008`).
+
+> **Estes dois números saem do log, não de CSV**: as baterias imprimem
+> `real=… modelo=…` por entidade a cada corrida. O `comparisons.csv` **não** os
+> substitui — ele afirma que porte e oráculo são equivalentes, e eles subcontam
+> igual.
 
 - **Grafo (User Profiles):** soma dos `count` de `User` = volume gerado — 100k/200k/400k/800k. Fecha exato; o núcleo do Neo4j é próprio e o #8 não passa por ele (verificado nos 4 XMIs-oráculo).
 - **Documento (User Profiles, Northwind):** a soma **não** fecha, e não deve. Medir a subcontagem e mostrar que é a mesma do oráculo. No Northwind isso aparece como divergências **não-fatais** em `orders`/`products`/`purchase_orders` — a quantidade delas varia com a ordem de leitura (15 por arquivo, 12 por cursor), então cite o invariante (**14/17** coleções fechando), não o número.
