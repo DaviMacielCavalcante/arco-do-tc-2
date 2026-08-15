@@ -416,6 +416,30 @@ class _FakeEagerResult:
         self.records = records
 
 
+class _FakeSession:
+    """Sessão falsa: `run` devolve um iterador, como a de verdade.
+
+    Existe porque `_read_label_combination` lê em **streaming**
+    (`session.run`), não com `driver.execute_query` — ver a docstring dela e o
+    achado do `E1`. O `run` da sessão real devolve um `Result` iterável, não uma
+    lista, e o falso precisa refletir isso para o teste exercitar o caminho que
+    roda em produção.
+    """
+
+    def __init__(self, driver: _FakeDriver) -> None:
+        self._driver = driver
+        self.closed = False
+
+    def run(self, query: str, **kwargs: Any) -> Iterator[Any]:
+        return iter(self._driver.respond(query).records)
+
+    def __enter__(self) -> _FakeSession:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.closed = True
+
+
 class _FakeDriver:
     """Driver falso: devolve respostas pré-fabricadas por query, e grava as
     queries recebidas — o suficiente para testar `_distinct_label_combinations`/
@@ -425,13 +449,22 @@ class _FakeDriver:
     def __init__(self, responses: Mapping[str, _FakeEagerResult]) -> None:
         self._responses = responses
         self.queries: list[str] = []
+        self.sessions: list[_FakeSession] = []
 
-    def execute_query(self, query: str, **kwargs: Any) -> _FakeEagerResult:
+    def respond(self, query: str) -> _FakeEagerResult:
         self.queries.append(query)
         for prefix, response in self._responses.items():
             if query.startswith(prefix):
                 return response
         raise AssertionError(f"query inesperada: {query!r}")
+
+    def execute_query(self, query: str, **kwargs: Any) -> _FakeEagerResult:
+        return self.respond(query)
+
+    def session(self, **kwargs: Any) -> _FakeSession:
+        session = _FakeSession(self)
+        self.sessions.append(session)
+        return session
 
 
 def test_extract_database_archetype_counts_usa_driver_falso() -> None:
@@ -449,3 +482,7 @@ def test_extract_database_archetype_counts_usa_driver_falso() -> None:
 
     assert any(linha["archetype"]["entity"] == "relationship" for linha in linhas)
     assert any(":`Person`" in q for q in driver.queries)
+
+    # A leitura por combinação de labels passa por sessão, e a sessão é fechada:
+    # o gerador é consumido até o fim, então o `with` sai pelo caminho normal.
+    assert driver.sessions and all(session.closed for session in driver.sessions)

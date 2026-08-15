@@ -127,7 +127,7 @@ import json
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any, Protocol
 
-from neo4j import Driver, RoutingControl
+from neo4j import READ_ACCESS, Driver, RoutingControl
 
 __all__ = [
     "build_archetype_counts",
@@ -579,7 +579,7 @@ def _distinct_label_combinations(driver: Driver, database: str | None) -> list[l
 
 def _read_label_combination(
     driver: Driver, database: str | None, labels: list[str], sampling_rate: float
-) -> list[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]]:
+) -> Iterator[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]]:
     r"""Porte de ``generateLabels``/``generateQuery``/``executeQuery``.
 
     ``SparkProcess.java:83-90``/``:107-114``/``:92-100``.
@@ -587,6 +587,32 @@ def _read_label_combination(
     O padrão de labels (``:\`Label1\`:\`Label2\```) monta igual ao
     ``generateLabels`` — mesmos acentos graves, mesma ordem (a que veio da
     primeira *query*, não reordenada aqui).
+
+    Lê em **streaming**, e não com ``driver.execute_query``
+    -------------------------------------------------------
+    O ``execute_query`` é *eager*: materializa a lista inteira antes de
+    devolver. Num tamanho grande do User Profiles isso são milhões de
+    registros, e o custo não é só memória — **é throughput**. Conforme a lista
+    cresce, o processo passa mais tempo alocando e menos drenando o socket; a
+    janela de recepção TCP fecha, e o servidor fica bloqueado esperando o
+    cliente ler. Medido em 08/08/2026, mesma *query* e mesmo servidor, sobre
+    200 mil registros:
+
+    ==============  ========  =================  ==========
+    consumo         tempo     taxa               memória
+    ==============  ========  =================  ==========
+    streaming       6,3s      31.549 rec/s       constante
+    ``execute_query``  39,6s  5.045 rec/s        424 MB
+    ==============  ========  =================  ==========
+
+    Com o servidor reportando ``rwnd_limited: 100,0%`` — ocioso, esperando o
+    nosso processo. É a causa real do que `bugs_originais.md` catalogou como
+    ``E1`` ("deleção massiva contamina a extração seguinte"): o gatilho não é a
+    deleção nem o servidor, é o **tamanho do resultado**, e por isso `small` e
+    `medium` sempre passavam enquanto `large`/`larger` colapsavam.
+
+    O gerador não muda o que é lido: mesmos registros, mesma ordem. Quem
+    consome (:func:`extract_archetype_counts`) já recebia um ``Iterator``.
     """
     label_pattern = "".join(f":`{label}`" for label in labels)
     query = (
@@ -595,13 +621,10 @@ def _read_label_combination(
         + (f"WHERE rand() < {sampling_rate} " if sampling_rate != 1.0 else "")
         + "RETURN n, r, labels(m)"
     )
-    result = driver.execute_query(
-        query,
-        n_labels=len(labels),
-        database_=database,
-        routing_=RoutingControl.READ,
-    )
-    return [
-        (record[0], record[1], list(record[2]) if record[2] is not None else None)
-        for record in result.records
-    ]
+    with driver.session(database=database, default_access_mode=READ_ACCESS) as session:
+        for record in session.run(query, n_labels=len(labels)):
+            yield (
+                record[0],
+                record[1],
+                list(record[2]) if record[2] is not None else None,
+            )

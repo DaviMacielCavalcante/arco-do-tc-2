@@ -36,6 +36,11 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
   execução real do Java**.
 - **`N1`** — achado **novo**, em `IdArchetypeMapping`, levantado na Fase 2.2 e
   **confirmado com dado real** (Neo4j Aura).
+- **`E1`** — achado **novo** e de outra natureza: é o único defeito **do porte**
+  neste catálogo, e o único já **corrigido** (08/08/2026). Levantado na Fase 3.2
+  como suposto comportamento do servidor Neo4j; a investigação de 08/08 mostrou
+  que a causa é a leitura *eager* do nosso extrator. O prefixo `E` era de
+  ambiente e ficou por inércia — mantido para não quebrar as citações.
 
 Todas as citações de linha referem-se ao `HEAD` do upstream, salvo indicação em
 contrário.
@@ -53,31 +58,32 @@ contrário.
 | #5 | `Neo4j2USchemaMain` | hardcode/caminho Hadoop | build | patch no oráculo |
 | **#6** | `Helpers.java:66` | `_id` assumido `ObjectId` | **crash** | corrigido por construção |
 | **#7** | `USchemaModelBuilder.java:255` | array vazio indexado | **crash** | corrigido por construção |
-| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **corretude confirmada (Northwind + escala 800k); resultado ordem-dependente** | replicado (fiel) |
-| **C1** | `CompareReference.java:38-41` | só compara `isFeaturedBy[0]` | corretude | replicado (fiel) |
+| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **equivalência confirmada (Northwind + tamanho 800k); resultado ordem-dependente** | replicado (fiel) |
+| **C1** | `CompareReference.java:38-41` | só compara `isFeaturedBy[0]` | equivalência | replicado (fiel) |
 | **C2** | `CompareReference.java:27` | recursão de `opposite` sem guarda | crash latente | replicado (fiel) |
 | **C3** | `CompareSchemaType.java:95-96` | `compareNames` sem guarda de nulo | crash latente | replicado (fiel) |
-| **C4** | `CompareKey`, `CompareStructuralVariation`, `CompareAggregate` | casamento guloso sobre relação não-transitiva | corretude | replicado (fiel) |
+| **C4** | `CompareKey`, `CompareStructuralVariation`, `CompareAggregate` | casamento guloso sobre relação não-transitiva | equivalência | replicado (fiel) |
 | C5 | `CompareSchemaType.java:98` | termo booleano morto | code smell | simplificado |
 | C6 | `CompareReference.java:45` | guarda assimétrico de nulo | code smell | não portado |
 | **C7** | `USchemaCompareMain.java:120` | casamento de variações não-injetivo | **falso positivo** | replicado + reporte |
-| I1 | `Inflector.java:470-473` | guarda ordinal testa o número, não o resto | corretude | replicado (fiel) |
+| I1 | `Inflector.java:470-473` | guarda ordinal testa o número, não o resto | equivalência | replicado (fiel) |
 | I2 | `Inflector.java:454-459` | `titleCase` sem guarda de nulo (NPE) | crash latente | não replicado (devolve `None`) |
 | I3 | `Inflector.java:445` | javadoc do `titleCase` promete o que o código não faz | documentação | replicado (fiel ao **código**) |
-| **M1** | `ObjectMetadata.java:55` | sentinela `0` só reconhecida de um lado | **corretude** | replicado (fiel) |
+| **M1** | `ObjectMetadata.java:55` | sentinela `0` só reconhecida de um lado | **equivalência** | replicado (fiel) |
 | **M2** | `SchemaInference.java:100-104` | `innerCountAndTimestampsAdjust` estoura quando o Joiner funde uma entidade interna | **crash confirmado** | replicado (fiel) |
-| **M3** | `DefaultStructuralVariationSorter.java:40` | `sortByCount` não ordena (`ECollections.sort` comentado) | **corretude** | replicado (fiel) |
-| **M4** | `DefaultStructuralVariationSorter.java:28,34,46` | comparadores devolvem só `-1`/`1`, nunca `0` — não são ordem total | **corretude** | replicado (fiel) |
+| **M3** | `DefaultStructuralVariationSorter.java:40` | `sortByCount` não ordena (`ECollections.sort` comentado) | **equivalência** | replicado (fiel) |
+| **M4** | `DefaultStructuralVariationSorter.java:28,34,46` | comparadores devolvem só `-1`/`1`, nunca `0` — não são ordem total | **equivalência** | replicado (fiel) |
 | **M5** | `DefaultEVariationMerger.java:132` | `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios | **crash confirmado (Java e porte)** | replicado (fiel) |
-| **M6** | `DefaultReferenceMatcher.java:34-50` | chave concatenada crua no regex, sem escape — metacaractere vira regex | **corretude confirmada (Java e porte)** | replicado (fiel) |
-| **N1** | `IdArchetypeMapping.java:60-62,100-104` | labels próprios ordenados, `refsTo` não — dois `EntityType` pro mesmo nó multi-label | **corretude confirmada (dado real)** | replicado (fiel) |
+| **M6** | `DefaultReferenceMatcher.java:34-50` | chave concatenada crua no regex, sem escape — metacaractere vira regex | **equivalência confirmada (Java e porte)** | replicado (fiel) |
+| **N1** | `IdArchetypeMapping.java:60-62,100-104` | labels próprios ordenados, `refsTo` não — dois `EntityType` pro mesmo nó multi-label | **equivalência confirmada (dado real)** | replicado (fiel) |
+| **E1** | `extractors/neo4j.py` — `_read_label_combination` (**nosso**, não do original) | leitura *eager* enche o buffer, fecha a janela TCP e derruba a vazão a ~47 KB/s em resultado grande | **medido (6,3× mais lento que streaming)** | **corrigido** em 08/08/2026 |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
 modo de falha que o instrumento de validação não pode ter.
 
 Severidade: **crash** = exceção em dado real · **crash latente** = exceção
-possível, não exercitada pelos dados do oráculo · **corretude** = resultado
+possível, não exercitada pelos dados do oráculo · **equivalência** = resultado
 silenciosamente errado · **code smell** = sem efeito observável.
 
 ---
@@ -122,7 +128,7 @@ if (sc.size() == 0 || !(inner instanceof ObjectSC)) //TODO: Sospecho que no se e
 ```
 
 **Sintoma.** `IndexOutOfBoundsException` em qualquer documento com um array
-vazio. Na Rota B do plano de escala, ~15% dos documentos têm `[]` em algum
+vazio. Na Rota B do plano de tamanho, ~15% dos documentos têm `[]` em algum
 campo.
 
 **O autor sabia.** O comentário é dele, no código, e diz exatamente isto:
@@ -224,13 +230,13 @@ de tamanho variável.
 Qualquer tabela de `count` do Northwind no texto precisa dizer **por qual
 caminho** foi extraída.
 
-### Confirmação em escala (User Profiles, 8 corridas, 31/07/2026)
+### Confirmação em volume (User Profiles, 8 corridas, 31/07/2026)
 
 Bateria completa sobre os oito bancos `up_{a,b}_{small,medium,large,larger}`
 (dados em `results/`). `Movie` é o **controle**: mesma
 corrida, mesmo pipeline, mas **sem array de tamanho variável**.
 
-| Rota | Escala | `User` real | No modelo | Capturado | `Movie` |
+| Rota | Tamanho | `User` real | No modelo | Capturado | `Movie` |
 |---|---|---|---|---|---|
 | **A** (`_id` ObjectId) | small | 100.000 | 22.168 | 22,17% | 100% |
 | | medium | 200.000 | 24.074 | 12,04% | 100% |
@@ -269,7 +275,7 @@ não constantes". **A bateria de 3 sementes (23, 69, 207) refutou isso** — os
 mesmos experimentos, com dados sorteados independentemente, reproduzem os
 percentuais dentro de **1,7% no pior caso**:
 
-| Rota | Escala | seed 23 | seed 69 | seed 207 | Amplitude |
+| Rota | Tamanho | seed 23 | seed 69 | seed 207 | Amplitude |
 |---|---|---|---|---|---|
 | A | small | 22,4% | 22,0% | 22,4% | 1,7% |
 | A | larger | **2,6%** | **2,6%** | **2,6%** | 1,5% |
@@ -1104,6 +1110,122 @@ por outro produziu `Apple_AND_Zebra` (variação real) e `Zebra_AND_Apple`
 **Decisão no porte: replicar** — `node_archetype` ordena, `_relationship_archetype` não, mesma assimetria do Java.
 
 **Correção upstream (candidata, não aplicada):** ordenar `targetLabels` em `addRelationships` também.
+
+---
+
+## E1 — leitura *eager* do Neo4j colapsa a vazão do bolt em resultado grande
+
+**Defeito do porte, corrigido em 08/08/2026.** Está catalogado aqui porque
+durante seis dias foi diagnosticado errado, e o diagnóstico errado chegou a
+virar decisão de projeto (o `--settle`) e a contaminar os tempos do paradigma
+grafo. O prefixo `E` era de *ambiente* — a investigação mostrou que a causa é
+**nossa**, não do servidor. A letra fica para não quebrar as citações.
+
+### O que era
+
+`_read_label_combination` (`extractors/neo4j.py`) lia com
+`driver.execute_query`, que é **eager**: materializa a lista inteira antes de
+devolver. No `large` são 2,66 milhões de registros, cada um com o nó completo.
+
+Conforme a lista cresce, o processo passa mais tempo alocando memória e menos
+drenando o socket. O buffer de recepção enche, o TCP fecha a janela — que é o
+comportamento correto do controle de fluxo — e o servidor fica **impedido de
+enviar**. A vazão desaba para ~47 KB/s, em loopback.
+
+Visto de fora parece impasse: os dois lados ociosos (~2% de CPU), transação
+`Running` há dezenas de minutos, memória de sobra na máquina. Não é impasse — é
+rastejo. O `ss -tni` do lado servidor é o que fecha o diagnóstico:
+
+```text
+rwnd_limited: 1001379ms (100,0%)     snd_wnd: 9216     Recv-Q: 0
+```
+
+Cem por cento do tempo bloqueado pela janela do cliente.
+
+### A medição que decidiu
+
+Mesma *query*, mesmo servidor, mesmo instante, 200 mil registros:
+
+| consumo | tempo | taxa | memória |
+|---|---|---|---|
+| streaming (`session.run`) | 6,3s | 31.549 rec/s | constante |
+| eager (`driver.execute_query`) | 39,6s | 5.045 rec/s | 424 MB |
+
+**6,3× mais lento**, e o problema se realimenta: quanto maior a lista, mais
+devagar se lê. Daí o degrau — `small` e `medium` sempre passavam, `large` e
+`larger` colapsavam.
+
+### A correção
+
+`_read_label_combination` virou **gerador** sobre `session.run()`. Mesma
+*query*, mesmos registros, mesma ordem; o chamador
+(`extract_archetype_counts`) já recebia `Iterator`. O `large` passou de "não
+terminou em 15 min" para **121,0s**, com as contagens fechando (400.000 `User`
+em 6 variações, 200.000 `Movie`, 9 arquétipos).
+
+Os 121,0s batem com os 120,34s medidos em 02/08 para o mesmo tamanho: a correção
+não deixa mais rápido que o melhor caso — **torna o melhor caso confiável**.
+
+### O que o diagnóstico anterior afirmava, e por que errava
+
+| afirmação anterior | o que a medição mostra |
+|---|---|
+| "comportamento do **servidor** Neo4j" | é do **cliente**; o servidor está ocioso esperando |
+| "deleção massiva contamina a extração seguinte" | coincidência de ordem — as baterias vão `small`→`larger`, então a maior deleção sempre precede a maior extração. O que decide é o **tamanho do resultado** |
+| "travou por 24 minutos" | não trava: rasteja a ~47 KB/s |
+| contorno: `--settle` | esperar antes de começar não muda como o cliente consome depois. Falhou com 30s **e** com 60s |
+| "não é código nosso nem do original" | é código nosso, e a correção é uma função |
+
+**Lição de método, não de Neo4j:** "os dois lados ociosos com transação aberta"
+foi lido como estado do servidor quando é a assinatura de *backpressure* — o
+consumidor não consome. A pergunta que teria encurtado seis dias é `ss -tni`,
+não `SHOW TRANSACTIONS`.
+
+### Consequência para os números já publicados: menor do que parecia
+
+**O `E1` é intermitente, não sistemático.** Quando não dispara, a extração roda
+na velocidade correta. Medido em 08/08, seed 23, contra o arquivo de 02/08:
+
+| tamanho | 02/08 (pré-correção, 3 sementes) | 08/08 (pós-correção) |
+|---|---|---|
+| `small` | 19,82 · 21,89 · 14,92 | 13,06 · 14,80 |
+| `medium` | 38,48 · 38,69 · 38,23 | 36,55 · 36,90 |
+| `large` | 120,84 · 121,09 · 131,38 | 120,90 · 123,60 |
+| `larger` | 440,93 · 435,78 · 437,53 | 436,95 · 437,55 |
+
+As medianas batem dentro de 2%. **Os tempos publicados sobrevivem.**
+
+O `E1` aparece como **outlier isolado**, não como inflação difusa: o
+`movies_min` a 56,44s contra 13–15s do normal, e o `large` a 267,43s de 01/08.
+São as corridas em que ele pegou.
+
+E é por isso que a **regra da mediana de 3** salvou as tabelas de 02/08 — ela
+descartou exatamente as corridas contaminadas.
+
+**A correção reduziu muito o `E1`, mas não o eliminou.** Antes dela, as três
+tentativas de rodar a bateria travaram; depois, a suíte de três sementes rodou
+inteira — mas ainda produziu um `small` a **156,09s** contra 13–14s do normal
+(seed 207, logo após apagar o `larger` da 69). A leitura *eager* era a causa
+**dominante**, não a única. O resíduo não foi investigado, e a regra da mediana
+segue necessária.
+
+> **Registro de correção.** Este documento afirmou, em 08/08, que os tempos de
+> `large`/`larger` anteriores estavam "inflados em grau desconhecido". A
+> remedição desmentiu. O que segue de pé é a causa, o mecanismo, a correção e o
+> fato de o `--settle` nunca ter tido efeito; o que cai é o alcance do estrago.
+
+### O que fica em aberto
+
+**A memória ainda cresce com o número de nós.** O streaming resolveu o
+transporte; `reduce_archetypes_by_node` continua agrupando por nó e manteve
+**2.958 MB** vivos no `large`. É inerente ao algoritmo, não ao fetch. No
+`larger` deve pedir ~6 GB — cabe na máquina de referência, mas é o número que
+decide se o `mapPartitions` previsto na Fase 2.0 vira necessidade.
+
+**O `--settle` foi removido** (08/08/2026), junto com o `SETTLE` da suíte: era
+contorno de uma causa que não existia, e custava ~6 min por suíte de três
+sementes. A limpeza do grafo segue acontecendo e vai para o log das baterias;
+deixou de ser gravada em 15/08, junto com a tabela `cleanup.csv`.
 
 ---
 
