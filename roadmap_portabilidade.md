@@ -22,12 +22,27 @@ Duas bordas, confirmadas com o orientador:
 ## 2. Arquitetura-alvo
 
 ```
-[MongoDB] ─┐                                    ┌─ PySpark: map(ArchetypeMapping) ─┐
-           ├─ extrator PySpark ── triplas ──────┤                                  ├─→ doc2uschema (porte) ─→ PyEcore ─→ XMI
-[Neo4j]  ──┘  {schema, count, timestamps}       └─ PySpark: map(IdArchetypeMapping)┘     (núcleo único)
+[MongoDB] ─ driver nativo ─ triplas ────────→ doc2uschema ──┐
+                            {schema, count}   (núcleo 1.2)  ├─→ PyEcore ─→ XMI
+[Neo4j]  ─ driver nativo ─ arquétipos ──→ neo4j_model ──────┘
+                                          (núcleo próprio)
 ```
 
-Decisão central: **um único núcleo de inferência compartilhado** pelos dois paradigmas. No Java, cada extrator `.spark` traz um `ModelDirector` próprio (mais fino); o caminho canônico e rico é o `doc2uschema` (`SchemaInference` + `USchemaModelBuilder`). O porte adota o `doc2uschema` como alvo e faz os extratores apenas **alimentarem as triplas** — o que é mais limpo que o original (sem `ModelDirector` duplicado por banco) **sem violar a fidelidade de comportamento**.
+**Dois núcleos de construção, não um.** O plano original desta seção era um núcleo
+único: os dois extratores produziriam a tripla e alimentariam o `doc2uschema`
+(`SchemaInference` + `USchemaModelBuilder`). A **Fase 2.2 leu o fonte e derrubou
+a premissa** — `Neo4j2USchema.process` chama `Json2USchemaModel.processArchetypes`,
+que usa quatro classes próprias do pacote `neo4j2uschema`. O grafo não gera
+tripla e não passa pelo `BuildUSchema`.
+
+O porte replica isso: `extractors/neo4j_model.py` é o segundo núcleo. **Os dois
+paradigmas convergem no metamodelo PyEcore, não no código de inferência** —
+unificá-los "por limpeza" quebraria a equivalência com o oráculo, que é o
+critério de aceite.
+
+O que sobrevive do plano: no documento o alvo é mesmo o `doc2uschema`, o caminho
+canônico e rico, e não o `ModelDirector` do `mongodb2uschema.spark`, que não foi
+portado.
 
 ---
 
@@ -37,7 +52,7 @@ Decisão central: **um único núcleo de inferência compartilhado** pelos dois 
 - Metamodelo via **PyEcore** carregando `uschema.ecore` (19 classes, puramente estrutural — substitui Factory/Package/Switch/AdapterFactory gerados pelo EMF).
 - Modelos intermediários: `raw` (Composite: `SchemaComponent` e filhos) e `firsto` (`MultiValued`, `Ranged`, …).
 - Núcleo `doc2uschema/process`: `SchemaInference`, `USchemaModelBuilder` e **todas** as estratégias (`AliasedAggregatedEntityJoiner`, `EVariationMerger`, `OptionalTagger`, `FeatureAnalyzer`, `ReferenceMatcher` + `Creator`, `StructuralVariationSorter`).
-- Extratores `mongodb2uschema.spark` e `neo4j2uschema` em **PySpark**.
+- Extratores `mongodb2uschema` e `neo4j2uschema` por **driver nativo** (ver a correção de premissa abaixo).
 
 **Fica de fora — e por quê (status corrigido):**
 - **OCL** — **ausente neste metamodelo**. O `uschema.ecore` não tem nenhuma constraint OCL (nem EAnnotations). Não-questão. (Se houvesse, seriam invariantes reescritas como checagens Python — não exige motor OCL.)
@@ -73,9 +88,9 @@ Decisão central: **um único núcleo de inferência compartilhado** pelos dois 
 - Portar a função de assinatura (`Helpers`/`IdArchetypeMapping`) como funções Python puras — `extractors/mongo.py`, `extractors/neo4j.py` (+ núcleo de construção próprio do Neo4j, `extractors/neo4j_model.py`).
 - **Gate atingido:** contagens == Java; XMI ≡ oráculo nos dois paradigmas (Northwind e os 4 XMIs Neo4j), extração Neo4j também confirmada contra banco real.
 
-### Fase 3 — Ponta a ponta + escala
-- Corretude: Northwind e Sakila.
-- Escala: User Profiles (quatro tamanhos), reproduzindo a tendência da Tabela 4 do artigo em PySpark.
+### Fase 3 — Ponta a ponta + volume
+- Equivalência: Northwind (Sakila descartado em 02/08/2026).
+- Volume: User Profiles (quatro tamanhos), reproduzindo a tendência da Tabela 4 do artigo.
 - Bugs **#6/#7 corrigidos por construção** (tratar `_id` inteiro e array vazio desde o início, em vez de patch) — material direto para o capítulo de reprodutibilidade.
 
 ---
@@ -96,6 +111,6 @@ O risco é **tempo**, não impossibilidade. Com a metacamada fora do caminho cr�
 | 0 | PyEcore + round-trip + harness de equivalência + oráculo Java em Docker | round-trip do Northwind fecha | concluída |
 | 1 | núcleo `doc2uschema` em Python (inferência completa) | cada módulo ≡ XMI-oráculo (estrutural) | concluída |
 | 2 | extratores MongoDB + Neo4j (driver nativo, não PySpark) | contagens == Java; XMI ≡ oráculo | concluída |
-| 3 | ponta a ponta, corretude + escala, bugs corrigidos | Northwind/Sakila ok; tendência Tabela 4 reproduzida | pendente |
+| 3 | ponta a ponta, equivalência + volume, bugs corrigidos | Northwind ok; tendência Tabela 4 reproduzida | pendente |
 
 **Sequência:** 0 → 1 → 2 → 3. Metacamada: trabalho futuro. Sirius/UI: fora de escopo (reconstruível em outra stack se desejado).
