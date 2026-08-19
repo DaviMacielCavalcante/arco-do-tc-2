@@ -2,7 +2,7 @@
 
 **Projeto:** Porte fiel e completo do U-Schema (Java/Spark/EMF) → Python — MongoDB e Neo4j
 **Autores:** Davi Cavalcante · João — CESUPA
-**Base:** `fase0_fundacao_oraculo.md` · **Validação:** `roteiro_experimental.md` · **Técnica:** `analise_ferramenta_uschema.md`
+**Base:** `fase0_fundacao_oraculo.md`
 **Prioridade:** imediata — pré-requisito de todas as fases seguintes.
 
 > **Organização por entrega.** As tarefas estão agrupadas por **entregável** (0.0–0.6),

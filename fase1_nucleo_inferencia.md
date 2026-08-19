@@ -1,6 +1,6 @@
 # Fase 1 — Núcleo de inferência (`doc2uschema`) · a espinha (guia detalhado)
 
-**Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Base técnica:** `analise_ferramenta_uschema.md` (§3.5, pipeline)
+**Parte de:** `roadmap_portabilidade.md`
 **Entregável:** núcleo de inferência `doc2uschema` · **Pré-requisito:** Fase 0 (PyEcore + harness)
 
 ## Objetivo

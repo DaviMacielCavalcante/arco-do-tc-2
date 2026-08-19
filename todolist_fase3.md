@@ -262,8 +262,7 @@ a resolver o import para a pasta de dados.
 > dos CSVs" no topo. O que segue continua valendo como registro de *por que* o
 > formato foi para uma tabela por grão, decisão que a revisão mantém.
 
-`roteiro_experimental.md` §6–7, que definia o formato, **não existe neste
-repositório**. O esquema abaixo passa a ser a referência.
+O esquema abaixo é a referência do formato.
 
 **Refeito em 02/08/2026: uma tabela por grão.** A primeira versão dava um CSV
 por bateria, o que misturava três granularidades no mesmo arquivo — os tempos da
@@ -526,7 +525,6 @@ Coletar as métricas e compará-las com o artigo. Nada além.
 
 - [x] `resources/README.md` — o item pedia corrigir a descrição de `movies_min.xmi` ("modelo mínimo Neo4j", quando é o User Profiles **Small**, 100.000 `User`) e listar os `up_*.xmi`. **Já estava feito**; o item é que estava desatualizado.
 - [x] **O buraco da guarda de cabeçalho foi fechado no lugar certo.** O item dizia que `run_size_mongo.py` e `run_size_neo4j.py` precisavam da correção cada um; ela acabou centralizada em `scripts/output.py` — arquivo de zero byte conta como novo (`:124`) e cada linha sai com `flush` imediato (`:176`) —, então vale para todas as baterias. Item estava desatualizado (conferido em 08/08).
-- [ ] Documentos citados pelos guias de fase e ausentes do repo: `resultado_mongodb.md`, `resultado_neo4j.md`, `resultado_bug8_subcontagem_user.md`, `analise_ferramenta_uschema.md`. Recuperar ou remover as referências. **`roteiro_experimental.md` saiu da lista** — o que ele definia foi redefinido na §3.0.
 - [x] **CSVs não serão versionados** (decisão de 02/08). `.gitignore` cobre `out/` e `results/`. Já custou uma vez: o CSV da bateria do grafo, apagado em 01/08, levou junto o respaldo da dispersão entre sementes.
 - [x] **Saída separada por produtor:** `out/porte/`, `out/oraculo/`, `resources/` (versionado). Convenção em `resources/README.md`.
 - [x] **Scripts em inglês** — `check_extraction_{mongo,neo4j}.py`, `check_northwind_invariants.py`. Seguem em português o diretório `results/` e os cabeçalhos dos CSVs; mudar agora invalidaria os arquivos já produzidos.

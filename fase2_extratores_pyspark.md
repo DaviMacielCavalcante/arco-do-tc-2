@@ -1,6 +1,6 @@
 # Fase 2 — Extratores em PySpark (MongoDB + Neo4j) (guia detalhado)
 
-**Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Base técnica:** `analise_ferramenta_uschema.md` (§3.3–3.4)
+**Parte de:** `roadmap_portabilidade.md`
 **Entregável:** extratores PySpark (MongoDB + Neo4j) · **Pré-requisito:** Fase 0 (oráculo + harness); integra com a Fase 1 pelo formato da tripla
 
 > **Guia desatualizado — fonte de verdade agora é `todolist_fase2.md`.**

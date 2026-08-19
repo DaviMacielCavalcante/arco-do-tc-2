@@ -1,6 +1,6 @@
 # Fase 3 — Ponta a ponta + volume + correções por construção (guia detalhado)
 
-**Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Resultados de referência:** `resultado_mongodb.md`, `resultado_neo4j.md`, `resultado_bug8_subcontagem_user.md`
+**Parte de:** `roadmap_portabilidade.md`
 **Entregável:** validação ponta a ponta + volume · **Pré-requisito:** Fases 1 e 2 com gates fechados
 
 > **Premissas corrigidas pelas Fases 1 e 2 — ler antes de executar a fase.**
@@ -22,11 +22,6 @@
 >   `~/Documents/teste_uschema/`, fora do repo. **Não bloqueia a 3.2** — os 8
 >   bancos `up_*` já estão materializados no MongoDB local —, mas precisa ser
 >   trazido para o capítulo ser reproduzível por terceiros.
-> - **Referências que não estão neste repositório:** `roteiro_experimental.md`,
->   `resultado_mongodb.md`, `resultado_neo4j.md`,
->   `resultado_bug8_subcontagem_user.md`, `analise_ferramenta_uschema.md`. Os
->   números-alvo que importam estão transcritos abaixo; o formato dos CSVs (§3.4)
->   precisa ser redefinido aqui ou o documento, recuperado.
 > - **O Neo4j não passa pelo núcleo da Fase 1** (achado da 2.2): a bateria do
 >   grafo roda `extractors/neo4j.py` + `extractors/neo4j_model.py`.
 

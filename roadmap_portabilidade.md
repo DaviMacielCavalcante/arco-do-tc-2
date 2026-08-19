@@ -1,6 +1,6 @@
 # Roadmap de portabilidade — porte fiel e completo do U-Schema para Python
 
-**Escopo deste documento:** *apenas* a portabilidade da ferramenta. A contribuição original (metacamada de acesso) é **trabalho futuro** e não entra no caminho crítico. Base técnica em `analise_ferramenta_uschema.md`.
+**Escopo deste documento:** *apenas* a portabilidade da ferramenta. A contribuição original (metacamada de acesso) é **trabalho futuro** e não entra no caminho crítico.
 
 > **Mudança de premissa (substitui a versão anterior).** O orientador definiu que **o foco do TCC é a portabilidade**, com a metacamada adiada. Isso inverte a lógica do roadmap anterior, que tratava o porte como infraestrutura e recomendava blackboxar o Java em Docker. Agora o **porte fiel e completo da inferência é a espinha do trabalho** — o Docker é rebaixado a andaime de desenvolvimento, e a metacamada sai para "trabalhos futuros".
 
