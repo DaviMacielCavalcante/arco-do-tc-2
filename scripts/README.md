@@ -78,7 +78,7 @@ buildada (`docker build -t extrator-uschema oracle/`) e o banco no ar.
 
 ```bash
 uv run python scripts/run_oracle_neo4j.py --seed 23
-uv run python scripts/run_oracle_neo4j.py --seed 23 --sizes larger --memory 10g
+uv run python scripts/run_oracle_neo4j.py --seed 23 --sizes larger
 uv run python scripts/run_oracle_mongo.py --seed 23 --sizes small
 ```
 

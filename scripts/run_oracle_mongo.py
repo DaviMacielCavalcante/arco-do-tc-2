@@ -94,7 +94,7 @@ def generate(route: str, size: str, uri: str, seed: int) -> float:
     return time.perf_counter() - start
 
 
-def run_oracle(database: str, collections: list[str], uri: str, seed: int, memory: str) -> Path:
+def run_oracle(database: str, collections: list[str], uri: str, seed: int) -> Path:
     """Roda o extrator Java no container sobre o banco já materializado.
 
     Diferente do caminho Neo4j, aqui o `--db` **é** o banco a conectar: o
@@ -115,8 +115,6 @@ def run_oracle(database: str, collections: list[str], uri: str, seed: int, memor
         URI do MongoDB, alcançável de dentro do container (`--network=host`).
     seed : int
         Semente da instância medida; entra no nome do XMI preservado.
-    memory : str
-        Limite de memória do container, no formato do Docker.
 
     Returns
     -------
@@ -131,7 +129,6 @@ def run_oracle(database: str, collections: list[str], uri: str, seed: int, memor
             "run",
             "--rm",
             "--network=host",
-            f"--memory={memory}",
             "-v",
             f"{ORACLE_OUTPUT}:/output",
             "-e",
@@ -155,9 +152,7 @@ def run_oracle(database: str, collections: list[str], uri: str, seed: int, memor
     return target
 
 
-def measure(
-    route: str, size: str, uri: str, seed: int, pkg: EPackage, memory: str
-) -> MongoOracleRun:
+def measure(route: str, size: str, uri: str, seed: int, pkg: EPackage) -> MongoOracleRun:
     """Roda porte e oráculo sobre o mesmo banco e compara os dois XMIs."""
     database = database_name(route, size)
 
@@ -194,7 +189,7 @@ def measure(
 
     start = time.perf_counter()
 
-    oracle_xmi = run_oracle(database, collections, uri, seed, memory)
+    oracle_xmi = run_oracle(database, collections, uri, seed)
 
     t_oracle = time.perf_counter() - start
 
@@ -281,7 +276,6 @@ def main() -> None:
     ap.add_argument("--uri", default="mongodb://localhost:27017")
     ap.add_argument("--routes", nargs="+", choices=DEFAULT_ROUTES, default=DEFAULT_ROUTES)
     ap.add_argument("--sizes", nargs="+", choices=DEFAULT_SIZES, default=DEFAULT_SIZES)
-    ap.add_argument("--memory", default="6g", help="limite de memória do container")
     ap.add_argument("--output-dir", type=Path, default=ROOT / "results")
 
     args = ap.parse_args()
@@ -299,7 +293,7 @@ def main() -> None:
                 # produtor nenhum, e saiu do esquema dos CSVs.
                 t_generation = generate(route, size, args.uri, args.seed)
 
-                run = measure(route, size, args.uri, args.seed, pkg, args.memory)
+                run = measure(route, size, args.uri, args.seed, pkg)
 
                 print(
                     f"  geracao={t_generation:.2f}s"

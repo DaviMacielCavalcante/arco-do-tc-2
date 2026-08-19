@@ -16,7 +16,7 @@ então os tamanhos não coexistem nem podem ser paralelizados. Exige a imagem
 `extrator-uschema` buildada (`docker build -t extrator-uschema oracle/`).
 
     uv run python scripts/run_oracle_neo4j.py --seed 23
-    uv run python scripts/run_oracle_neo4j.py --seed 23 --sizes larger --memory 10g
+    uv run python scripts/run_oracle_neo4j.py --seed 23 --sizes larger
 """
 
 import argparse
@@ -96,7 +96,7 @@ def generate(size: str, uri: str, seed: int) -> tuple[float, float]:
     return t_cleanup, time.perf_counter() - start
 
 
-def run_oracle(schema: str, seed: int, memory: str) -> tuple[float, Path]:
+def run_oracle(schema: str, seed: int) -> tuple[float, Path]:
     """Roda o extrator Java no container sobre o grafo já materializado.
 
     O `--db` é o nome do **schema**, não do banco a conectar: o
@@ -110,8 +110,6 @@ def run_oracle(schema: str, seed: int, memory: str) -> tuple[float, Path]:
         Nome do schema no modelo, e do arquivo de saída (`movies_min`, ...).
     seed : int
         Semente da instância medida; entra no nome do XMI preservado.
-    memory : str
-        Limite de memória do container, no formato do Docker (ex.: ``6g``).
 
     Returns
     -------
@@ -128,7 +126,6 @@ def run_oracle(schema: str, seed: int, memory: str) -> tuple[float, Path]:
             "run",
             "--rm",
             "--network=host",
-            f"--memory={memory}",
             "-v",
             f"{ORACLE_OUTPUT}:/output",
             IMAGE,
@@ -161,7 +158,7 @@ def sum_by_label(rows: list[dict[str, Any]], label: str) -> int:
     )
 
 
-def measure(size: str, uri: str, seed: int, pkg: EPackage, memory: str) -> Neo4jOracleRun:
+def measure(size: str, uri: str, seed: int, pkg: EPackage) -> Neo4jOracleRun:
     """Roda porte e oráculo sobre a mesma instância e compara os três XMIs."""
     schema = SCHEMA_BY_SIZE[size]
 
@@ -193,7 +190,7 @@ def measure(size: str, uri: str, seed: int, pkg: EPackage, memory: str) -> Neo4j
 
     t_write = time.perf_counter() - start
 
-    t_oracle, oracle_xmi = run_oracle(schema, seed, memory)
+    t_oracle, oracle_xmi = run_oracle(schema, seed)
 
     oracle = load_model(oracle_xmi, pkg)
 
@@ -259,7 +256,6 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     ap.add_argument("--uri", default="bolt://localhost:7687")
     ap.add_argument("--sizes", nargs="+", choices=list(SCHEMA_BY_SIZE), default=DEFAULT_SIZES)
-    ap.add_argument("--memory", default="6g", help="limite de memória do container")
     ap.add_argument("--output-dir", type=Path, default=ROOT / "results")
 
     args = ap.parse_args()
@@ -276,7 +272,7 @@ def main() -> None:
             # duas é medida do porte nem do oráculo, e as duas saíram dos CSVs.
             t_cleanup, t_generation = generate(size, args.uri, args.seed)
 
-            run = measure(size, args.uri, args.seed, pkg, args.memory)
+            run = measure(size, args.uri, args.seed, pkg)
 
             print(
                 f"  limpeza={t_cleanup:.2f}s"
