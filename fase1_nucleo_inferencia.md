@@ -108,7 +108,7 @@ Dois níveis: (a) **por módulo** — os testes de regressão portados (§1.6) p
 
 ## Entregáveis
 
-`raw.py` (modelos intermediários; **sem** `firsto.py` — ver §1.1), `strategies.py` (as 6 estratégias + `Null*`), `inference.py` (`SchemaInference`), `builder.py` (`USchemaModelBuilder`/`fillEV`), e a **suíte de testes portada** (regressão JUnit do repo: `CountTimestamp`/`ObjectId`/`Types`/`Optional`/`SimplifyAggr`/`RelationshipTypeToEntityType`/`RemovePMap` + teste novo confirmando o #8 — `meta` inteiro da segunda ocorrência descartado no colapso, fiel ao original — + testes de `__eq__` e por estratégia).
+`raw.py` (modelos intermediários; **sem** `firsto.py` — ver §1.1), `strategies.py` (as 6 estratégias + `Null*`), `schema_inference.py` (`SchemaInference`), `builder.py` (`USchemaModelBuilder`/`fillEV`), e a **suíte de testes portada** (regressão JUnit do repo: `CountTimestamp`/`ObjectId`/`Types`/`Optional`/`SimplifyAggr`/`RelationshipTypeToEntityType`/`RemovePMap` + teste novo confirmando o #8 — `meta` inteiro da segunda ocorrência descartado no colapso, fiel ao original — + testes de `__eq__` e por estratégia).
 
 ## Riscos da fase
 

@@ -168,8 +168,14 @@ recusa anexar em esquema diferente, e um `results/` de ensaio anterior geraria
 
 **A remedição tem de ser completa.** Com o `E1` corrigido, nenhum tempo de
 grafo medido antes de 08/08 vale para `large`/`larger`, e os dois ensaios
-parciais deste esquema foram interrompidos justamente ali. O conjunto que fecha
-a fase é o de 3 sementes (~1h45), não o ensaio.
+parciais deste esquema foram interrompidos justamente ali. O que fecha a fase é
+a **cadeia inteira numa semente** (~25 min), rodada até o fim — não o ensaio
+interrompido no meio.
+
+> **Não são três sementes.** A varredura de 23/69/207 deixou de ser rotina na
+> sessão de 15/08 (§Sessão de 15/08), junto com a coluna `seed`; as 24 corridas
+> das outras duas foram descartadas. Repetir com `--seed` é medição pontual,
+> para quando um número parecer fora da curva — não requisito do gate.
 
 ### Os comandos
 

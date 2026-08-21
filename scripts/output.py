@@ -232,8 +232,9 @@ def normalized(total_time: float, query_time: float) -> str:
     Raises
     ------
     ValueError
-        Se ``query_time`` for zero ou negativo — divisor inválido indica
-        cronômetro quebrado, não resultado a gravar.
+        Se ``query_time`` for zero, negativo ou pequeno demais para sobreviver
+        ao arredondamento da coluna — divisor inválido indica cronômetro
+        quebrado, não resultado a gravar.
 
     Examples
     --------
@@ -245,10 +246,16 @@ def normalized(total_time: float, query_time: float) -> str:
     >>> normalized(23.452, 2.366) == str(23.45 / 2.366)
     True
     """
-    if query_time <= 0:
+    # Valida o divisor **arredondado**, que é o que de fato divide: um
+    # `query_time` positivo mas menor que meio décimo de milissegundo vira 0.0
+    # nas quatro casas da coluna, e a divisão estouraria com ZeroDivisionError
+    # em vez da mensagem daqui.
+    divisor = round(query_time, QUERY_DECIMALS)
+
+    if divisor <= 0:
         raise ValueError(f"query_time inválido como divisor: {query_time!r}")
 
-    return str(round(total_time, TIME_DECIMALS) / round(query_time, QUERY_DECIMALS))
+    return str(round(total_time, TIME_DECIMALS) / divisor)
 
 
 def format_seconds(value: float) -> str:
