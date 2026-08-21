@@ -58,8 +58,9 @@ gerou antes da correção, sobre a mesma instância.
 
 Quatro mudanças de esquema, decididas nesta ordem:
 
-**Semente única.** `--seed` deixou de ser obrigatório: `DEFAULT_SEED = 23` nos
-quatro scripts, sobrescrevível. A **coluna `seed` saiu** de `runs.csv`; a
+**Semente única.** `--seed` deixou de ser obrigatório: `DEFAULT_SEED = 23` em
+`scripts/output.py`, importado pelos quatro scripts e lido pelo `run_suite.sh`,
+sobrescrevível. A **coluna `seed` saiu** de `runs.csv`; a
 semente continua no `run_id`, porque é ela que separa duas corridas do mesmo
 alvo — sem ela a chave duplicaria em silêncio. As 24 corridas das sementes 69 e
 207 foram descartadas.
@@ -172,8 +173,10 @@ a fase é o de 3 sementes (~1h45), não o ensaio.
 
 ### Os comandos
 
-A cadeia completa numa semente (~25 min). A suíte exige exatamente 3 sementes,
-então as baterias por tamanho vão chamadas direto:
+A cadeia completa numa semente (~25 min). O `run_suite.sh` roda exatamente isto,
+numa semente por invocação (`./scripts/run_suite.sh [semente]`, sem argumento
+vale o `DEFAULT_SEED`); as chamadas abaixo são a forma manual, para rodar uma
+bateria isolada ou retomar a cadeia do meio:
 
 ```bash
 uv run python scripts/run_northwind.py &&
@@ -188,11 +191,18 @@ uv run python scripts/run_size_neo4j.py --seed 23
 ```bash
 wc -l results/*.csv
 awk -F, 'NR>1 && $3=="seeded_oracle"{print $1, $4, $5}' results/comparisons.csv
-awk -F, 'NR>1{print $1, $2}' results/runs.csv | sort | uniq -d   # tem de sair vazio
+awk -F, 'NR>1{print $1}' results/runs.csv | sort | uniq -d       # tem de sair vazio
 ```
 
-A checagem de duplicata é sobre **`run_id` + `producer`**: com o formato longo,
-uma corrida `oracle_chain` legitimamente dá duas linhas com o mesmo `run_id`.
+A checagem de duplicata é sobre **`run_id` sozinho**. O `producer` do formato
+longo não existe mais: era ele que deixava uma corrida `oracle_chain` dar duas
+linhas com o mesmo `run_id`, e hoje o oráculo tem tabela própria (`oracle.csv`),
+então em `runs.csv` cada corrida é uma linha só. Em `comparisons.csv` a chave é
+`run_id` + `reference`.
+
+O `uniq -d` é conferência do que já está em disco — a gravação em si já recusa
+chave repetida (`KEYS` em `scripts/output.py`), então a duplicata não chega a
+entrar no arquivo.
 
 Esperado: `equivalente=True` em tudo; **zero** divergências no grafo contra o
 oráculo semeado; no documento, `True` com divergências **não-fatais de `count`**

@@ -31,10 +31,14 @@ from pyecore.ecore import EPackage
 
 from baseline import neo4j_query_time
 from output import (
+    DEFAULT_SEED,
     PORT,
     RESOURCES,
     SEEDED_ORACLE,
     Results,
+    format_query_time,
+    format_seconds,
+    fraction,
     modeled_counts,
     normalized,
     run_id,
@@ -63,10 +67,6 @@ CLEANER = ROOT / "scripts" / "clean_databases.py"
 PORT_OUTPUT = ROOT / "out" / "porte"
 ORACLE_OUTPUT = ROOT / "out" / "oraculo"
 IMAGE = "extrator-uschema"
-
-#: Semente padrão das baterias. Sobrescrevível com `--seed`; fixa por padrão
-#: para que a corrida seja reproduzível sem o operador ter de lembrar do valor.
-DEFAULT_SEED = 23
 
 
 def generate(size: str, uri: str, seed: int) -> tuple[float, float]:
@@ -235,11 +235,11 @@ def record(tables: Results, seed: int, run: Neo4jOracleRun) -> None:
             "paradigm": "neo4j",
             "target": run.schema,
             "origin": "database",
-            "total_time": f"{run.total:.2f}",
-            "extraction_time": f"{run.t_extraction:.2f}",
-            "inference_time": f"{run.t_inference:.2f}",
-            "write_time": f"{run.t_write:.2f}",
-            "query_time": f"{run.t_query:.4f}",
+            "total_time": format_seconds(run.total),
+            "extraction_time": format_seconds(run.t_extraction),
+            "inference_time": format_seconds(run.t_inference),
+            "write_time": format_seconds(run.t_write),
+            "query_time": format_query_time(run.t_query),
             "normalized": normalized(run.total, run.t_query),
         }
     )
@@ -290,8 +290,8 @@ def main() -> None:
             for entity, (actual, in_port, in_oracle) in run.counts.items():
                 print(
                     f"    {entity}: real={actual}"
-                    f"  porte={in_port} ({in_port / actual:.1%})"
-                    f"  oraculo={in_oracle} ({in_oracle / actual:.1%})"
+                    f"  porte={in_port} ({fraction(in_port, actual)})"
+                    f"  oraculo={in_oracle} ({fraction(in_oracle, actual)})"
                 )
 
             print(

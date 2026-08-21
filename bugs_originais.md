@@ -1193,7 +1193,18 @@ na velocidade correta. Medido em 08/08, seed 23, contra o arquivo de 02/08:
 | `large` | 120,84 · 121,09 · 131,38 | 120,90 · 123,60 |
 | `larger` | 440,93 · 435,78 · 437,53 | 436,95 · 437,55 |
 
-As medianas batem dentro de 2%. **Os tempos publicados sobrevivem.**
+Comparando **mediana com mediana** (pré · pós): `small` 19,82 · 13,93 (−29,7%);
+`medium` 38,48 · 36,72 (−4,6%); `large` 121,09 · 122,25 (+1,0%); `larger`
+437,53 · 437,25 (−0,1%). Os dois conjuntos têm tamanhos diferentes (3 e 2
+corridas), então a comparação é indicativa, não um teste.
+
+**Os tempos publicados sobrevivem** — e a leitura é essa, não "as medianas
+batem": nos dois tamanhos grandes elas batem (≤1%), e nos dois menores o
+pós-correção é **mais rápido**. Um número publicado que o `E1` inflou erra para
+cima, nunca para baixo, então nenhuma conclusão da tabela de 02/08 depende de
+tempo que a correção teria encurtado. O `small`, com os 30% de diferença, é o
+tamanho onde o `E1` mais pesava em termos relativos — 6 segundos de resíduo
+sobre uma corrida de 14.
 
 O `E1` aparece como **outlier isolado**, não como inflação difusa: o
 `movies_min` a 56,44s contra 13–15s do normal, e o `large` a 267,43s de 01/08.

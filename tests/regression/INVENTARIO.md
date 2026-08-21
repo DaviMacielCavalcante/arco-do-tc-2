@@ -104,11 +104,14 @@ Fase 1.
 > **model-to-model** que roda **depois** do builder e faz duas coisas: (1)
 > `relTypeToEntityType` converte todo `RelationshipType` em `EntityType` com
 > prefixo `Ref_`; (2) `removePMap` extrai cada `PMap` para uma entidade `Map_<Attr>`
-> com features `key`/`value`. **Esse módulo `m2m/` não está no roadmap da Fase 1**
-> (nem na 1.4, nem em outra sub-fase) e **não foi portado**. Portá-lo (com seus
-> dois testes) é uma sub-fase própria — **1.4b** — registrada no
-> `todolist_fase1.md`. Só o `OptionalTest` do bloco A é portável hoje; ele
-> exercita o pipeline `infer`+`build`+`FeatureAnalyzer`, que já existe.
+> com features `key`/`value`. **Esse módulo `m2m/` não estava no roadmap da Fase 1**
+> (nem na 1.4, nem em outra sub-fase): virou sub-fase própria, a **1.4b**, e
+> **fechou** — `src/uschema/inference/m2m.py`, com os dois JUnit portados em
+> `tests/regression/test_remove_pmap.py` e
+> `tests/regression/test_relationship_type_to_entity_type.py`. É o que a tabela
+> acima registra. Quando esta nota foi escrita, só o `OptionalTest` do bloco A
+> era portável — ele exercita o pipeline `infer`+`build`+`FeatureAnalyzer`, que
+> já existia.
 
 ---
 

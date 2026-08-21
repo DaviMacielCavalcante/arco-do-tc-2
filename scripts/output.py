@@ -75,6 +75,21 @@ PORT = "port"
 RESOURCES = "resources"
 SEEDED_ORACLE = "seeded_oracle"
 
+#: Semente padrão das baterias. Mora aqui — e não em cada script — porque o
+#: `run_suite.sh` também precisa dela: a guarda contra rodar a mesma semente duas
+#: vezes procura o valor em `results/runs.csv`, e duplicá-lo no shell abriria
+#: espaço para os dois divergirem, que é justamente o caso que a guarda existe
+#: para pegar.
+DEFAULT_SEED = 23
+
+#: Casas decimais das colunas de tempo. `query_time` leva quatro porque é o
+#: divisor de `normalized`: a duas casas o arredondamento sozinho desloca a razão
+#: em até 8%, e a coluna derivada deixa de bater com as que a definem. Constantes
+#: em vez de literal em cada `record()` porque `normalized` divide os valores
+#: **já arredondados** — as duas precisões têm de ser a mesma coisa, não duas.
+TIME_DECIMALS = 2
+QUERY_DECIMALS = 4
+
 RUNS = [
     "run_id",
     "experiment",
@@ -113,6 +128,19 @@ TABLES = {
     "oracle": ORACLE_RUNS,
     "comparisons": COMPARISONS,
     "divergences": DIVERGENCES,
+}
+
+#: Chave natural de cada tabela — o que não pode repetir no arquivo. O `run_id` é
+#: determinístico, então repetir uma bateria no mesmo diretório regrava as mesmas
+#: chaves em **append**: sem esta guarda a duplicata entra calada e só aparece
+#: depois, num `uniq -d`, com as contagens da análise já dobradas.
+#:
+#: `divergences` fica de fora de propósito: um confronto legitimamente produz N
+#: linhas com o mesmo `run_id`, e ali não há chave natural.
+KEYS = {
+    "runs": ("run_id",),
+    "oracle": ("run_id",),
+    "comparisons": ("run_id", "reference"),
 }
 
 
@@ -183,6 +211,12 @@ def normalized(total_time: float, query_time: float) -> str:
     chama de *inference*; a coluna ``inference_time`` do nosso esquema é outra
     coisa e fica em ~0,00s.
 
+    **Divide os valores como eles vão para o CSV, não os crus, e devolve a razão
+    em precisão cheia.** O contrato do `dicionario_de_dados.md` é que dividir
+    ``total_time`` por ``query_time``, lidos do arquivo, reproduza esta coluna;
+    arredondar só o resultado publicaria a razão de dois números que o CSV não
+    tem, e é por isso que ``query_time`` leva quatro casas.
+
     Parameters
     ----------
     total_time : float
@@ -193,7 +227,7 @@ def normalized(total_time: float, query_time: float) -> str:
     Returns
     -------
     str
-        A razão com duas casas, pronta para o CSV.
+        A razão em precisão cheia, pronta para o CSV.
 
     Raises
     ------
@@ -204,12 +238,96 @@ def normalized(total_time: float, query_time: float) -> str:
     Examples
     --------
     >>> normalized(23.452, 2.366)
-    '9.91'
+    '9.911242603550296'
+
+    A razão é a das colunas, então bate com o que a análise recalcula:
+
+    >>> normalized(23.452, 2.366) == str(23.45 / 2.366)
+    True
     """
     if query_time <= 0:
         raise ValueError(f"query_time inválido como divisor: {query_time!r}")
 
-    return f"{total_time / query_time:.2f}"
+    return str(round(total_time, TIME_DECIMALS) / round(query_time, QUERY_DECIMALS))
+
+
+def format_seconds(value: float) -> str:
+    """Formatar uma coluna de tempo do CSV.
+
+    Existe para que a precisão das colunas e a que :func:`normalized` usa saiam
+    da **mesma** constante — divergirem faria a razão deixar de bater com as
+    colunas que a definem.
+
+    Parameters
+    ----------
+    value : float
+        Segundos medidos.
+
+    Returns
+    -------
+    str
+        O valor com :data:`TIME_DECIMALS` casas.
+
+    Examples
+    --------
+    >>> format_seconds(23.4521)
+    '23.45'
+    """
+    return f"{value:.{TIME_DECIMALS}f}"
+
+
+def format_query_time(value: float) -> str:
+    """Formatar a coluna ``query_time``, que leva mais casas que as outras.
+
+    Parameters
+    ----------
+    value : float
+        Segundos da query de referência.
+
+    Returns
+    -------
+    str
+        O valor com :data:`QUERY_DECIMALS` casas.
+
+    Examples
+    --------
+    >>> format_query_time(2.36612)
+    '2.3661'
+    """
+    return f"{value:.{QUERY_DECIMALS}f}"
+
+
+def fraction(part: int, whole: int) -> str:
+    """Formatar ``part``/``whole`` como percentual, tolerando denominador zero.
+
+    Só o log das baterias usa isto. Coleção vazia no MongoDB ou label ausente no
+    grafo dão ``whole == 0``, e a divisão crua abortava a corrida **antes** do
+    ``record()`` — descartando a medição inteira, inclusive o ``docker run`` do
+    oráculo, por causa de uma linha de log.
+
+    Parameters
+    ----------
+    part : int
+        Quantos o modelo (ou o oráculo) contabiliza.
+    whole : int
+        Quantos existem no banco.
+
+    Returns
+    -------
+    str
+        O percentual com uma casa, ou ``'n/a'`` quando não há o que dividir.
+
+    Examples
+    --------
+    >>> fraction(42592, 100000)
+    '42.6%'
+    >>> fraction(0, 0)
+    'n/a'
+    """
+    if whole == 0:
+        return "n/a"
+
+    return f"{part / whole:.1%}"
 
 
 def entity_name(source: str) -> str:
@@ -336,6 +454,20 @@ def _check_header(path: Path, header: list[str]) -> bool:
     return False
 
 
+def _load_keys(path: Path, columns: tuple[str, ...]) -> set[tuple[str, ...]]:
+    """Ler as chaves já gravadas num CSV, para recusar a segunda gravação.
+
+    Lê o arquivo inteiro uma vez, na abertura. As tabelas têm dezenas de linhas
+    por suíte — o custo é irrelevante e a alternativa seria descobrir a duplicata
+    na análise, depois de a bateria ter rodado uma hora.
+    """
+    if not path.exists() or path.stat().st_size == 0:
+        return set()
+
+    with open(path, newline="") as file:
+        return {tuple(row[column] for column in columns) for row in csv.DictReader(file)}
+
+
 class Results:
     """Escreve as quatro tabelas em append, num diretório.
 
@@ -345,6 +477,10 @@ class Results:
 
     Cada linha é gravada com `flush` imediato: uma bateria de uma hora
     interrompida no meio preserva o que já mediu.
+
+    Na abertura, além do cabeçalho, carrega as **chaves** já gravadas (:data:`KEYS`)
+    e recusa regravá-las: o `run_id` é determinístico, então repetir uma bateria
+    no mesmo diretório duplicaria em append, sem erro nenhum.
 
     Examples
     --------
@@ -356,6 +492,7 @@ class Results:
         self.directory = directory
         self._files: dict[str, TextIO] = {}
         self._writers: dict[str, csv.DictWriter[str]] = {}
+        self._keys: dict[str, set[tuple[str, ...]]] = {}
 
     def __enter__(self) -> "Results":
         """Abrir as quatro tabelas, escrevendo o cabeçalho nas que forem novas."""
@@ -365,6 +502,10 @@ class Results:
             path = self.directory / f"{name}.csv"
 
             is_new = _check_header(path, header)
+
+            columns = KEYS.get(name)
+            if columns is not None:
+                self._keys[name] = set() if is_new else _load_keys(path, columns)
 
             file = open(path, "a", newline="")
             writer = csv.DictWriter(file, fieldnames=header, restval="")
@@ -388,8 +529,34 @@ class Results:
         for file in self._files.values():
             file.close()
 
+    def _reject_duplicate(self, table: str, row: Mapping[str, Any]) -> None:
+        """Falhar se a chave desta linha já está no arquivo.
+
+        Antes da gravação, não depois: a bateria para na primeira duplicata, com
+        o CSV ainda íntegro, em vez de terminar produzindo um arquivo que a
+        análise conta em dobro.
+        """
+        columns = KEYS.get(table)
+
+        if columns is None:
+            return
+
+        key = tuple(str(row[column]) for column in columns)
+
+        if key in self._keys[table]:
+            raise SystemExit(
+                f"{self.directory / f'{table}.csv'} já tem {'+'.join(columns)}"
+                f" = {'+'.join(key)}.\n"
+                "Esta corrida já foi medida neste diretório — gravar de novo duplicaria.\n"
+                "  Arquive o diretório antes de repetir:\n"
+                "    mv results results_$(date +%d-%m)"
+            )
+
+        self._keys[table].add(key)
+
     def _write(self, table: str, row: Mapping[str, Any]) -> None:
         """Gravar uma linha e descarregar no disco."""
+        self._reject_duplicate(table, row)
         self._writers[table].writerow(row)
         self._files[table].flush()
 
@@ -417,7 +584,7 @@ class Results:
             "oracle",
             {
                 "run_id": run,
-                "total_time": f"{seconds:.2f}",
+                "total_time": format_seconds(seconds),
                 "normalized": normalized(seconds, query_time),
             },
         )

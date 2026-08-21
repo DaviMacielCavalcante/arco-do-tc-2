@@ -34,7 +34,15 @@ from bson import json_util
 from pyecore.ecore import EPackage
 from pymongo import MongoClient
 
-from output import PORT, RESOURCES, Results, entity_name, modeled_counts, run_id
+from output import (
+    PORT,
+    RESOURCES,
+    Results,
+    entity_name,
+    format_seconds,
+    modeled_counts,
+    run_id,
+)
 from runs import NorthwindRun
 from uschema.extractors.mongo import build_triples, extract_database_triples
 from uschema.extractors.triple import triples_from_rows
@@ -159,10 +167,10 @@ def record(tables: Results, run: NorthwindRun) -> None:
             "paradigm": "mongodb",
             "target": SCHEMA_NAME,
             "origin": run.origin,
-            "total_time": f"{run.total:.2f}",
-            "extraction_time": f"{run.t_extraction:.2f}",
-            "inference_time": f"{run.t_inference:.2f}",
-            "write_time": f"{run.t_write:.2f}",
+            "total_time": format_seconds(run.total),
+            "extraction_time": format_seconds(run.t_extraction),
+            "inference_time": format_seconds(run.t_inference),
+            "write_time": format_seconds(run.t_write),
         }
     )
 

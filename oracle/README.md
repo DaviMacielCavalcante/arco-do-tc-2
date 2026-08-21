@@ -40,7 +40,7 @@ docker run --network=host --memory=6g -v "$PWD/out:/output" \
 
 # Neo4j
 docker run --network=host --memory=6g -v "$PWD/out:/output" \
-  extrator-uschema --db UserProfile --kind neo4j
+  extrator-uschema --db movies_min --kind neo4j
 ```
 
 > **O `--db` do Neo4j é o nome do SCHEMA, não do banco a conectar.**

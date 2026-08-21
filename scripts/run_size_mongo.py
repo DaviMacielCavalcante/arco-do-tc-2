@@ -28,7 +28,17 @@ from pyecore.ecore import EPackage
 from pymongo import MongoClient
 
 from baseline import mongo_query_time
-from output import Results, entity_name, modeled_counts, normalized, run_id
+from output import (
+    DEFAULT_SEED,
+    Results,
+    entity_name,
+    format_query_time,
+    format_seconds,
+    fraction,
+    modeled_counts,
+    normalized,
+    run_id,
+)
 from runs import MongoSizeRun
 from uschema.extractors.mongo import extract_database_triples
 from uschema.extractors.triple import triples_from_rows
@@ -42,10 +52,6 @@ DEFAULT_ROUTES = ["A", "B"]
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "gen_userprofiles.py"
 XMI_OUTPUT = ROOT / "out" / "porte"
-
-#: Semente padrão das baterias. Sobrescrevível com `--seed`; fixa por padrão
-#: para que a corrida seja reproduzível sem o operador ter de lembrar do valor.
-DEFAULT_SEED = 23
 
 
 def database_name(route: str, size: str) -> str:
@@ -159,11 +165,11 @@ def record(tables: Results, seed: int, run: MongoSizeRun) -> None:
             "route": run.route,
             "target": run.database,
             "origin": "database",
-            "total_time": f"{run.total:.2f}",
-            "extraction_time": f"{run.t_extraction:.2f}",
-            "inference_time": f"{run.t_inference:.2f}",
-            "write_time": f"{run.t_write:.2f}",
-            "query_time": f"{run.t_query:.4f}",
+            "total_time": format_seconds(run.total),
+            "extraction_time": format_seconds(run.t_extraction),
+            "inference_time": format_seconds(run.t_inference),
+            "write_time": format_seconds(run.t_write),
+            "query_time": format_query_time(run.t_query),
             "normalized": normalized(run.total, run.t_query),
         }
     )
@@ -207,7 +213,7 @@ def main() -> None:
                 )
 
                 for entity, (actual, model) in run.counts.items():
-                    print(f"    {entity}: real={actual} modelo={model} ({model / actual:.1%})")
+                    print(f"    {entity}: real={actual} modelo={model} ({fraction(model, actual)})")
 
                 record(tables, args.seed, run)
 

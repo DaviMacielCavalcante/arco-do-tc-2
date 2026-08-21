@@ -131,8 +131,10 @@ Substituiu o `run_scale_suite.sh`, que orquestrava só o tamanho e existia para
 varrer três sementes — com a semente única, o que restava a orquestrar era a
 cadeia inteira.
 
-Sem argumento ele **não passa** `--seed`: vale o `DEFAULT_SEED` de cada bateria.
-Duplicar o valor no shell abriria espaço para os dois divergirem.
+Sem argumento ele **não passa** `--seed`: vale o `DEFAULT_SEED`, que mora em
+`output.py` e é de onde os quatro scripts o importam. A guarda de semente
+repetida, abaixo, lê o mesmo valor de lá — duplicá-lo no shell abriria espaço
+para os dois divergirem, que é justamente o caso que a guarda existe para pegar.
 
 **Recusa repetir uma semente já gravada** (exit 3). As baterias gravam em
 append, então repetir não sobrescreve — duplica, e a duplicata só apareceria

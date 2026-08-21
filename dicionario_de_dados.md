@@ -57,7 +57,13 @@ Só o **porte**. O oráculo tem tabela própria.
 
 **`run_id`** — determinístico, montado de
 `experiment`-`paradigm`-`target`-`seed`-`origin`, omitindo as partes ausentes.
-É a chave, e junta com as outras cinco tabelas.
+É a chave desta tabela e da `oracle.csv`, e junta com as outras três.
+
+> **Sozinho ele não identifica um confronto nem uma divergência.** Uma corrida
+> do grafo compara o mesmo modelo com `resources` **e** com `seeded_oracle`:
+> em `comparisons.csv` a chave é `run_id` + `reference`, e em `divergences.csv`
+> esse par ainda se abre em N linhas. Junte sempre por `run_id` + `reference`
+> quando o destino for uma dessas duas.
 
 > **A semente não é coluna, mas está no identificador.** É ela que separa duas
 > corridas do mesmo alvo com `--seed` diferente; sem ela a chave duplicaria em

@@ -42,9 +42,9 @@ if [ $# -gt 1 ]; then
     exit 2
 fi
 
-# Sem argumento, o `--seed` nem é passado: vale o DEFAULT_SEED de cada script,
-# que é onde a semente padrão mora. Duplicá-la aqui abriria espaço para as duas
-# divergirem.
+# Sem argumento, o `--seed` nem é passado: vale o DEFAULT_SEED, que mora em
+# `scripts/output.py` e é de onde os quatro scripts o importam. Duplicá-lo aqui
+# abriria espaço para as duas divergirem.
 SEED_ARGS=()
 SEED_LABEL="padrão dos scripts"
 if [ $# -eq 1 ]; then
@@ -55,8 +55,13 @@ fi
 # As baterias gravam em APPEND. Rodar duas vezes a mesma semente não sobrescreve
 # nada — duplica, e a duplicata só aparece depois, num `uniq -d`. Já custou uma
 # sessão inteira; a guarda é barata.
+#
+# A semente da guarda sai do mesmo lugar que a das baterias. Fixá-la aqui era o
+# próprio cenário que a guarda existe para pegar: mudar o DEFAULT_SEED faria o
+# grep procurar a semente errada, e a duplicata voltaria a passar calada.
 if [ -s results/runs.csv ]; then
-    SEED_CHECK="${1:-23}"
+    SEED_CHECK="${1:-$(uv run python -c \
+        'import sys; sys.path.insert(0, "scripts"); from output import DEFAULT_SEED; print(DEFAULT_SEED)')}"
     if grep -qE "^[^,]*-${SEED_CHECK}," results/runs.csv; then
         echo "erro: results/runs.csv já tem corridas da semente ${SEED_CHECK}." >&2
         echo "  Arquive o diretório antes de repetir:" >&2

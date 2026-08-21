@@ -11,10 +11,12 @@
 >   não extraído de log de executor. Spark segue como paralelizador opcional.
 > - **O Northwind já fechou** na Fase 2.3 e foi re-executado em 31/07/2026
 >   contra um MongoDB real (`equivalent=True`, só não-fatais do #8) — a 3.1
->   herda o resultado; o que falta dele é **reprodutibilidade** (os JSONs não
->   foram versionados, por decisão). **A quantidade de divergências é
->   ordem-dependente** (15 por arquivo, 12 por cursor): o invariante é
->   `equivalent=True` + não-fatais + 14/17 coleções. Ver `bugs_originais.md` §#8.
+>   herda o resultado. A **reprodutibilidade**, que era o que faltava, foi
+>   resolvida na própria Fase 3: os 17 JSONs estão versionados em
+>   `resources/datasets/northwind/`, com a licença do dataset. **A quantidade de
+>   divergências é ordem-dependente** (15 por arquivo, 12 por cursor): o
+>   invariante é `equivalent=True` + não-fatais + 14/17 coleções. Ver
+>   `bugs_originais.md` §#8.
 > - **O Neo4j ponta a ponta fechou** em 31/07/2026 no tamanho `larger`:
 >   `equivalent=True`, **zero divergências**, `soma User = 800.000` exata. Era a
 >   lacuna que a 2.2 deixou (lá só a camada de construção foi validada).
@@ -27,7 +29,7 @@
 
 ## Objetivo
 
-Validar o porte completo de ponta a ponta — extrator PySpark → núcleo de inferência → PyEcore → XMI — em **equivalência** (datasets reais) e **tamanho** (datasets sintéticos), confirmando que os bugs do código original ficam tratados **por construção**. É a fase de avaliação experimental do TCC.
+Validar o porte completo de ponta a ponta — extrator por driver nativo → núcleo de inferência → PyEcore → XMI — em **equivalência** (datasets reais) e **tamanho** (datasets sintéticos), confirmando que os bugs do código original ficam tratados **por construção**. É a fase de avaliação experimental do TCC. (No grafo o caminho é outro — `extractors/neo4j.py` + `extractors/neo4j_model.py`, sem passar pelo núcleo da Fase 1; ver o banner no topo.)
 
 ---
 
@@ -106,7 +108,10 @@ Coletar as métricas e compará-las com o artigo. As quatro tabelas de `results/
 
 ## Gate de aceite da Fase 3
 
-- Northwind e Sakila: equivalência estrutural com o oráculo (equivalência).
+- Northwind: equivalência estrutural com o oráculo, no paradigma **documento** —
+  único dataset real da fase (Sakila foi descartado, §3.1). No **grafo**, a
+  equivalência é sobre o dataset sintético do User Profiles, contra o oráculo
+  Java rodado na mesma instância.
 - Volume: tendência de crescimento reproduzida nos quatro tamanhos, leitura integral confirmada **no grafo**, sem estouro de memória.
 - Bugs **#6/#7**: tratados por construção (rodam sem patch em 800k), com testes de regressão verdes.
 - Bug **#8**: subcontagem **replicada** e medida, casando com a do oráculo. Um porte que aqui "acertasse" o volume real estaria **fora** do gate, não dentro dele.

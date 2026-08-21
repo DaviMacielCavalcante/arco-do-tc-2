@@ -24,7 +24,18 @@ from neo4j import GraphDatabase
 from pyecore.ecore import EPackage
 
 from baseline import neo4j_query_time
-from output import PORT, RESOURCES, Results, modeled_counts, normalized, run_id
+from output import (
+    DEFAULT_SEED,
+    PORT,
+    RESOURCES,
+    Results,
+    format_query_time,
+    format_seconds,
+    fraction,
+    modeled_counts,
+    normalized,
+    run_id,
+)
 from runs import Neo4jSizeRun
 from uschema.extractors.neo4j import extract_database_archetype_counts
 from uschema.extractors.neo4j_model import build_uschema_from_archetypes
@@ -47,10 +58,6 @@ ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "gen_userprofiles_neo4j.py"
 CLEANER = ROOT / "scripts" / "clean_databases.py"
 XMI_OUTPUT = ROOT / "out" / "porte"
-
-#: Semente padrão das baterias. Sobrescrevível com `--seed`; fixa por padrão
-#: para que a corrida seja reproduzível sem o operador ter de lembrar do valor.
-DEFAULT_SEED = 23
 
 
 def generate(size: str, uri: str, seed: int) -> tuple[float, float]:
@@ -147,11 +154,11 @@ def record(tables: Results, seed: int, run: Neo4jSizeRun) -> None:
             "paradigm": "neo4j",
             "target": run.schema,
             "origin": "database",
-            "total_time": f"{run.total:.2f}",
-            "extraction_time": f"{run.t_extraction:.2f}",
-            "inference_time": f"{run.t_inference:.2f}",
-            "write_time": f"{run.t_write:.2f}",
-            "query_time": f"{run.t_query:.4f}",
+            "total_time": format_seconds(run.total),
+            "extraction_time": format_seconds(run.t_extraction),
+            "inference_time": format_seconds(run.t_inference),
+            "write_time": format_seconds(run.t_write),
+            "query_time": format_query_time(run.t_query),
             "normalized": normalized(run.total, run.t_query),
         }
     )
@@ -198,7 +205,7 @@ def main() -> None:
             )
 
             for entity, (actual, model) in run.counts.items():
-                print(f"    {entity}: real={actual} modelo={model} ({model / actual:.1%})")
+                print(f"    {entity}: real={actual} modelo={model} ({fraction(model, actual)})")
 
             record(tables, args.seed, run)
 

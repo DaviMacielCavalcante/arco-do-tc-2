@@ -5,8 +5,10 @@ sobre um dataset conhecido e compara o XMI resultante com o esperado, via
 `uschema.validation.compare_uschemas`.
 
 Portados do JUnit de dataset do repo: `UserProfileTest`, `EveryPoliticianTest`,
-`CompaniesTest`, `FacebookTest`, `StackOverflowTest`, além de Northwind
-(golden-master principal da Fase 1) e Sakila (segundo ponto de equivalência, Fase 3).
+`CompaniesTest`, `FacebookTest`, `StackOverflowTest`, além do Northwind
+(golden-master principal da Fase 1 e único dataset real da equivalência da
+Fase 3 — o Sakila foi **descartado** em 02/08/2026, ver
+`fase3_validacao_volume.md` §3.1).
 
-Datasets **sem** golden-master pronto (Sakila, variações de volume) usam o
-oráculo em Docker (`oracle/`) para gerar o gabarito.
+Datasets **sem** golden-master pronto (as variações de volume) usam o oráculo em
+Docker (`oracle/`) para gerar o gabarito.
