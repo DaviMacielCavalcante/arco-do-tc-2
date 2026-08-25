@@ -39,7 +39,7 @@ Precisa do pacote ``uschema`` (este repo) instalável/no ``PYTHONPATH``, e um
 Neo4j acessível (local, Desktop, Aura free etc.)::
 
     cd arco-do-tc-2  # raiz do repo, onde fica src/
-    PYTHONPATH=src python3 scripts/verificar_extracao_neo4j.py \\
+    PYTHONPATH=src python3 scripts/check_extraction_neo4j.py \\
         --uri bolt://localhost:7687 --user neo4j --password sua_senha --drop
 
 Sem ``--user``/``--password`` assume auth desligada (mesma convenção de
@@ -89,7 +89,7 @@ CREATE (u1)-[:FAVORITE]->(m1)
 CREATE (u2)-[:WATCHED {stars: 3}]->(m2)
 """
 # u3 fica isolado de propósito (sem WATCHED/FAVORITE) — mesmo caso dos ~15%
-# de users isolados do gerador de escala, exercita o nó sem `references`.
+# de users isolados do gerador por tamanho, exercita o nó sem `references`.
 
 # --- 2. Grafo da assimetria de labels ---------------------------------------
 CQL_SEED_LABEL_ASYMMETRY = """

@@ -2,7 +2,7 @@
 
 **Projeto:** Porte fiel e completo do U-Schema (Java/Spark/EMF) → Python — MongoDB e Neo4j
 **Autores:** Davi Cavalcante · João — CESUPA
-**Base:** `fase0_fundacao_oraculo.md` · **Validação:** `roteiro_experimental.md` · **Técnica:** `analise_ferramenta_uschema.md`
+**Base:** `fase0_fundacao_oraculo.md`
 **Prioridade:** imediata — pré-requisito de todas as fases seguintes.
 
 > **Organização por entrega.** As tarefas estão agrupadas por **entregável** (0.0–0.6),
@@ -14,7 +14,7 @@
 
 ---
 
-## 0.0 — Fundação do repositório Python  ✅ *(scaffold pronto)*
+## 0.0 — Fundação do repositório Python  *(scaffold pronto)*
 
 > Estrutura montada com `uv`; **sem implementação** (o código dos módulos é dos autores). Serve de esqueleto para as tarefas 0.1–0.6.
 
@@ -23,7 +23,7 @@
 - [x] Ferramental configurado no `pyproject.toml`: `ruff` (docstrings NumPy, linha 100), `mypy` estrito, `pytest`.
 - [x] Esqueleto de pacotes criado, um por fase: `metamodel/` (0.1–0.2) · `naming/` (0.6) · `validation/` (0.3) · `intermediate/` (1.1) · `inference/` (1.2–1.4) · `extractors/` (2).
 - [x] Diretórios de apoio: `resources/` (`.ecore` + XMIs), `oracle/` (Dockerfile + `patches/`), `scripts/` (baterias), `tests/` (`unit`/`regression`/`datasets`), cada um com `README.md` de escopo; `CLAUDE.md` do repositório.
-- [x] Copiar para `resources/` os artefatos de referência do repo Java original: `uschema.ecore`, `model_northwind.xmi`, `model.xmi`, `movies_min.xmi` (+ XMIs de escala Neo4j `up_*`).
+- [x] Copiar para `resources/` os artefatos de referência do repo Java original: `uschema.ecore`, `model_northwind.xmi`, `model.xmi`, `movies_min.xmi` (+ XMIs por tamanho Neo4j `up_*`).
 
 **Saída:** repositório com esqueleto, ferramental e dependências prontos — `uv sync` resolve, `ruff`/`mypy`/`pytest` rodam limpos no esqueleto vazio.
 
@@ -89,20 +89,20 @@
 > **`InflectorTest`** não depende da inferência nem de banco — fecha junto com a
 > **0.6**, e está listado lá.
 
-> ⚠️ **Dois achados do inventário contrariam a suposição do roadmap** (detalhe em `INVENTARIO.md`):
+> **Dois achados do inventário contrariam a suposição do roadmap** (detalhe em `INVENTARIO.md`):
 >
 > 1. **Metade dos "testes de regressão" exige um MongoDB de pé.** `CountTimestampTest`, `ObjectIdTest`, `TypesTest` e `SimplifyAggrTest` injetam o JSON no banco e rodam o **map-reduce no Mongo** antes de inferir. Não são a camada barata que o roadmap supõe — são integração disfarçada.
 > 2. **Dá para portá-los sem banco, cortando na tripla.** A saída do map-reduce (`{schema, count, firstTimestamp, lastTimestamp}`) **é** o contrato de `extractors/triple.py`. Congelada como fixture (gerada uma vez pelo oráculo da 0.5), a inferência é testada em unidade. É o que os testes puros do `doc2uschema` já fazem — o `OptionalTest` traz esse JSON escrito à mão dentro da classe.
 >
 > Também: os 17 arquivos de `documents/.../examples/tests/` **não são testes** (16 têm corpo vazio, o 17º é um *runner* sem asserção), e o `automated/AutoTest1` só afirma `assertEquals(true, true)`. Não portar.
 
-> ⚠️ **Testes que codificam o bug.** Onde você corrigiu um bug (#6/#7/#8), porte a *estrutura* do teste mas afirme o valor **corrigido**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (só aparece com array de tamanho variável) — a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
+> **Testes que codificam o bug.** Onde você corrigiu um bug (#6/#7/#8), porte a *estrutura* do teste mas afirme o valor **corrigido**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (só aparece com array de tamanho variável) — a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
 
 ---
 
 ## 0.5 — Oráculo Java em Docker  *(gerador de gabarito + baseline — opcional)*
 
-> Papel reduzido: (a) rodar a suíte JUnit e obter o *baseline verde*; (b) gerar o XMI-gabarito só para datasets sem golden-master (Sakila, variações de escala). **Não entra na entrega** (a ferramenta portada é Python puro); agrega reprodutibilidade, não funcionalidade.
+> Papel reduzido: (a) rodar a suíte JUnit e obter o *baseline verde*; (b) gerar o XMI-gabarito só para datasets sem golden-master (Sakila, variações de volume). **Não entra na entrega** (a ferramenta portada é Python puro); agrega reprodutibilidade, não funcionalidade.
 
 - [x] Escrever o `Dockerfile` (base JDK 8 + Maven + build único — mongo-spark 3.0.1/Scala 2.12, neo4j-spark 2.4.5-M2/Spark 3.0.1/Scala 2.12 — + `entrypoint.sh` + patches `#1`/`#4`/`#5`/`#6`/`#7` verificados byte a byte). `#2`/`#3` satisfeitos estruturalmente (não precisam de `.patch` nesta build); `#8` deliberadamente fora — ver `oracle/README.md`.
 - [x] Unificar os dois builds Maven separados (Mongo migrado de Spark 2.4.1/Scala 2.11 pra 3.0.1/Scala 2.12) num só (`uschema-build/runner`), testado sem colisão de dependências transitivas e com saída idêntica aos builds antigos via `compare()`; contrato simplificado de `KIND`/`DB_NAME` (env vars) pra `--db`/`--kind` (CLI args), batendo com o desenho original do plano. Detalhe em `oracle/docker_explain.md`.
@@ -122,7 +122,7 @@
 
 > A capitalização/pluralização dos nomes de entidade precisa **casar** com o Java — senão os nomes de `EntityType` divergem e o harness acusa divergência em toda entidade.
 
-- [x] Ler `Inflector.java` e listar as regras efetivamente usadas. **É o Inflector do ModeShape vendorizado** (por sua vez inspirado no do Rails), em **duas cópias idênticas** (`doc2uschema/util/inflector` e `mongodb2uschema.spark/inflector` — diferem só no `package`): um porte serve às duas. A classe tem 10 métodos públicos, mas o pipeline só usa **três**: `capitalize` (nome da entidade raiz — `SchemaInference:183,188`), `singularize` (nome da entidade agregada — `SchemaInference:233`, `USchemaModelBuilder:194`, `ModelDirector:84,102`) e `pluralize` (`DefaultReferenceMatcherCreator:26`). `camelCase`/`underscore`/`humanize`/`titleCase`/`ordinalize` são **código morto** no pipeline — portados mesmo assim, porque são o que o `InflectorTest` cobre.
+- [x] Ler `Inflector.java` e listar as regras efetivamente usadas. **É o Inflector do ModeShape versionado** (por sua vez inspirado no do Rails), em **duas cópias idênticas** (`doc2uschema/util/inflector` e `mongodb2uschema.spark/inflector` — diferem só no `package`): um porte serve às duas. A classe tem 10 métodos públicos, mas o pipeline só usa **três**: `capitalize` (nome da entidade raiz — `SchemaInference:183,188`), `singularize` (nome da entidade agregada — `SchemaInference:233`, `USchemaModelBuilder:194`, `ModelDirector:84,102`) e `pluralize` (`DefaultReferenceMatcherCreator:26`). `camelCase`/`underscore`/`humanize`/`titleCase`/`ordinalize` são **código morto** no pipeline — portados mesmo assim, porque são o que o `InflectorTest` cobre.
 - [x] Decidir entre uma lib Python (`inflection`/`inflect`) e uma reimplementação fiel. **Decidido: reimplementação fiel.** As regras do Java são uma lista **ordenada** de ~50 regexes com semântica de inserção-na-frente (`LinkedList.addFirst`), e a saída depende dessa ordem: `pluralize("human")` → `"humen"` (a regra irregular `(m)an$` casa no fim de qualquer palavra). Nenhuma lib reproduz isso — o `inflection` é um porte do Rails **moderno**, não do snapshot que o ModeShape copiou. Usar lib trocaria nomes de `EntityType` e quebraria a equivalência. → **`inflection` removido** das dependências de runtime, do override do `mypy` e das *Key dependencies* do `CLAUDE.md` (que agora traz a nota "o Inflector é reimplementação, não lib", para ninguém reintroduzi-la).
 - [x] **Porte do módulo** (`src/uschema/naming/inflector.py`) — **completo, 24 de 24 passos.**
   - [x] **Camada de regex** (infra): `_to_python_replacement` (traduz `$1` do Java → `\g<1>` do `re`, escapando a barra literal **antes** de introduzir os retrovisores), `_Rule` (compila com `IGNORECASE | re.ASCII`; `search` + `sub` = o `find()` + `replaceAll()` do Java) e `replace_all_with_uppercase`. Conferida contra as regras reais: `octopi`, `wives`, `elves`, `women`, `indices`; e contra o `shouldReplaceAllWithUppercase` do JUnit (`hEllO`, `hLlo`).
@@ -145,7 +145,7 @@
 
 ---
 
-## ✅ Gate de aceite da Fase 0
+## Gate de aceite da Fase 0
 
 - [x] Round-trip do `model_northwind.xmi` fecha (recarrega estruturalmente idêntico).
 - [x] Harness de equivalência funcionando (acerta A==A e detecta divergência injetada), com a semântica espelhada do `USchemaCompareMain`.

@@ -21,7 +21,7 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
   equivalência (Fase 0.3). Não existiam catalogados.
 - **`I1`–`I3`** — achados **novos**, no `Inflector` (`.../util/inflector/`),
   levantados ao portar a normalização de nomes (Fase 0.6). O `Inflector` é código
-  vendorizado do **ModeShape**, então os defeitos são *upstream do upstream*.
+  versionado do **ModeShape**, então os defeitos são *upstream do upstream*.
 - **`M1`** — achado **novo**, em `ObjectMetadata` (`.../metadata/`), levantado ao
   portar o modelo intermediário (Fase 1.1).
 - **`M2`** — achado **novo**, em `SchemaInference`/`AliasedAggregatedEntityJoiner`,
@@ -36,6 +36,11 @@ que, **depois de concluído o porte**, seja possível propor correções upstrea
   execução real do Java**.
 - **`N1`** — achado **novo**, em `IdArchetypeMapping`, levantado na Fase 2.2 e
   **confirmado com dado real** (Neo4j Aura).
+- **`E1`** — achado **novo** e de outra natureza: é o único defeito **do porte**
+  neste catálogo, e o único já **corrigido** (08/08/2026). Levantado na Fase 3.2
+  como suposto comportamento do servidor Neo4j; a investigação de 08/08 mostrou
+  que a causa é a leitura *eager* do nosso extrator. O prefixo `E` era de
+  ambiente e ficou por inércia — mantido para não quebrar as citações.
 
 Todas as citações de linha referem-se ao `HEAD` do upstream, salvo indicação em
 contrário.
@@ -53,31 +58,32 @@ contrário.
 | #5 | `Neo4j2USchemaMain` | hardcode/caminho Hadoop | build | patch no oráculo |
 | **#6** | `Helpers.java:66` | `_id` assumido `ObjectId` | **crash** | corrigido por construção |
 | **#7** | `USchemaModelBuilder.java:255` | array vazio indexado | **crash** | corrigido por construção |
-| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **corretude confirmada (dado real, Northwind)** | replicado (fiel) |
-| **C1** | `CompareReference.java:38-41` | só compara `isFeaturedBy[0]` | corretude | replicado (fiel) |
+| **#8** | `SchemaInference.java:207-211` | `meta` inteiro (count+timestamps) descartado no colapso de variações | **equivalência confirmada (Northwind + tamanho 800k); resultado ordem-dependente** | replicado (fiel) |
+| **C1** | `CompareReference.java:38-41` | só compara `isFeaturedBy[0]` | equivalência | replicado (fiel) |
 | **C2** | `CompareReference.java:27` | recursão de `opposite` sem guarda | crash latente | replicado (fiel) |
 | **C3** | `CompareSchemaType.java:95-96` | `compareNames` sem guarda de nulo | crash latente | replicado (fiel) |
-| **C4** | `CompareKey`, `CompareStructuralVariation`, `CompareAggregate` | casamento guloso sobre relação não-transitiva | corretude | replicado (fiel) |
+| **C4** | `CompareKey`, `CompareStructuralVariation`, `CompareAggregate` | casamento guloso sobre relação não-transitiva | equivalência | replicado (fiel) |
 | C5 | `CompareSchemaType.java:98` | termo booleano morto | code smell | simplificado |
 | C6 | `CompareReference.java:45` | guarda assimétrico de nulo | code smell | não portado |
 | **C7** | `USchemaCompareMain.java:120` | casamento de variações não-injetivo | **falso positivo** | replicado + reporte |
-| I1 | `Inflector.java:470-473` | guarda ordinal testa o número, não o resto | corretude | replicado (fiel) |
+| I1 | `Inflector.java:470-473` | guarda ordinal testa o número, não o resto | equivalência | replicado (fiel) |
 | I2 | `Inflector.java:454-459` | `titleCase` sem guarda de nulo (NPE) | crash latente | não replicado (devolve `None`) |
 | I3 | `Inflector.java:445` | javadoc do `titleCase` promete o que o código não faz | documentação | replicado (fiel ao **código**) |
-| **M1** | `ObjectMetadata.java:55` | sentinela `0` só reconhecida de um lado | **corretude** | replicado (fiel) |
+| **M1** | `ObjectMetadata.java:55` | sentinela `0` só reconhecida de um lado | **equivalência** | replicado (fiel) |
 | **M2** | `SchemaInference.java:100-104` | `innerCountAndTimestampsAdjust` estoura quando o Joiner funde uma entidade interna | **crash confirmado** | replicado (fiel) |
-| **M3** | `DefaultStructuralVariationSorter.java:40` | `sortByCount` não ordena (`ECollections.sort` comentado) | **corretude** | replicado (fiel) |
-| **M4** | `DefaultStructuralVariationSorter.java:28,34,46` | comparadores devolvem só `-1`/`1`, nunca `0` — não são ordem total | **corretude** | replicado (fiel) |
+| **M3** | `DefaultStructuralVariationSorter.java:40` | `sortByCount` não ordena (`ECollections.sort` comentado) | **equivalência** | replicado (fiel) |
+| **M4** | `DefaultStructuralVariationSorter.java:28,34,46` | comparadores devolvem só `-1`/`1`, nunca `0` — não são ordem total | **equivalência** | replicado (fiel) |
 | **M5** | `DefaultEVariationMerger.java:132` | `homogeneousArraysMerge` indexa array vazio quando os dois lados colapsam vazios | **crash confirmado (Java e porte)** | replicado (fiel) |
-| **M6** | `DefaultReferenceMatcher.java:34-50` | chave concatenada crua no regex, sem escape — metacaractere vira regex | **corretude confirmada (Java e porte)** | replicado (fiel) |
-| **N1** | `IdArchetypeMapping.java:60-62,100-104` | labels próprios ordenados, `refsTo` não — dois `EntityType` pro mesmo nó multi-label | **corretude confirmada (dado real)** | replicado (fiel) |
+| **M6** | `DefaultReferenceMatcher.java:34-50` | chave concatenada crua no regex, sem escape — metacaractere vira regex | **equivalência confirmada (Java e porte)** | replicado (fiel) |
+| **N1** | `IdArchetypeMapping.java:60-62,100-104` | labels próprios ordenados, `refsTo` não — dois `EntityType` pro mesmo nó multi-label | **equivalência confirmada (dado real)** | replicado (fiel) |
+| **E1** | `extractors/neo4j.py` — `_read_label_combination` (**nosso**, não do original) | leitura *eager* enche o buffer, fecha a janela TCP e derruba a vazão a ~47 KB/s em resultado grande | **medido (6,3× mais lento que streaming)** | **corrigido** em 08/08/2026 |
 
 `C7` está numa família própria: os demais fazem o harness **reprovar** algo
 válido ou explodir. `C7` faz o harness **aprovar** um modelo errado — o único
 modo de falha que o instrumento de validação não pode ter.
 
 Severidade: **crash** = exceção em dado real · **crash latente** = exceção
-possível, não exercitada pelos dados do oráculo · **corretude** = resultado
+possível, não exercitada pelos dados do oráculo · **equivalência** = resultado
 silenciosamente errado · **code smell** = sem efeito observável.
 
 ---
@@ -122,7 +128,7 @@ if (sc.size() == 0 || !(inner instanceof ObjectSC)) //TODO: Sospecho que no se e
 ```
 
 **Sintoma.** `IndexOutOfBoundsException` em qualquer documento com um array
-vazio. Na Rota B do plano de escala, ~15% dos documentos têm `[]` em algum
+vazio. Na Rota B do plano de tamanho, ~15% dos documentos têm `[]` em algum
 campo.
 
 **O autor sabia.** O comentário é dele, no código, e diz exatamente isto:
@@ -191,9 +197,104 @@ de tempo publicadas — requer dados de antes/depois antes de propor.
 
 **Confirmado com dado real (golden-master do Northwind, Fase 2.3):** rodando o
 pipeline real sobre os 17 arquivos do Northwind, `compare()` devolve
-`equivalent=True` com 15 divergências não-fatais, todas em entidades com
-campo array — assinatura consistente com o #8 (a ocorrência que "sobrevive"
-ao colapso depende da ordem de processamento, não da estrutura).
+`equivalent=True` com 15 divergências não-fatais (pelo caminho de leitura por
+arquivo — ver a ressalva abaixo), todas em entidades com campo array —
+assinatura consistente com o #8 (a ocorrência que "sobrevive" ao colapso
+depende da ordem de processamento, não da estrutura).
+
+### Achado novo (31/07/2026): o resultado é **ordem-dependente**, não só subcontado
+
+O #8 é mais severo do que "descarta contagem": ele faz o modelo publicado
+depender da **ordem física** em que os documentos são lidos. Duas leituras do
+**mesmo** Northwind — mesmos 397 documentos, mesmas **49 linhas de tripla** —
+produzem modelos diferentes:
+
+| Caminho de leitura | Divergências não-fatais | `Orders` | `Purchase_orders` | `Products` |
+|---|---|---|---|---|
+| Arquivos `.json` (ordem de linha) | **15** | 24 | 22 | 40 |
+| `MongoClient` (ordem do cursor) | **12** | 38 | 23 | 40 |
+
+Causa cravada: a coleção `orders` devolve `_id` na ordem `30, 31, 32, 33…` no
+arquivo e `33, 37, 32, 30…` no cursor (banco carregado com inserção
+não-ordenada) — mesmo **conjunto**, ordem diferente. Como o colapso reaproveita
+a variação já registrada e descarta o `meta` da nova, **quem chega primeiro
+define o `count` que sobrevive**.
+
+**O que é estável** (e portanto o que pode ser citado como resultado):
+`equivalent=True`; todas as divergências **não-fatais**; confinadas a
+`Orders`/`Purchase_orders`/`Products`/`Detail`; e **14 de 17** coleções fechando
+a contagem, sempre as mesmas três falhando — exatamente as que têm campo array
+de tamanho variável.
+
+**O que não é estável:** o número de divergências e as contagens sobreviventes.
+Qualquer tabela de `count` do Northwind no texto precisa dizer **por qual
+caminho** foi extraída.
+
+### Confirmação em volume (User Profiles, 8 corridas, 31/07/2026)
+
+Bateria completa sobre os oito bancos `up_{a,b}_{small,medium,large,larger}`
+(dados em `results/`). `Movie` é o **controle**: mesma
+corrida, mesmo pipeline, mas **sem array de tamanho variável**.
+
+| Rota | Tamanho | `User` real | No modelo | Capturado | `Movie` |
+|---|---|---|---|---|---|
+| **A** (`_id` ObjectId) | small | 100.000 | 22.168 | 22,17% | 100% |
+| | medium | 200.000 | 24.074 | 12,04% | 100% |
+| | large | 400.000 | 21.789 | 5,45% | 100% |
+| | larger | 800.000 | 21.013 | **2,63%** | 100% |
+| **B** (`_id` inteiro, ~15% arrays vazios) | small | 100.000 | 31.280 | **31,28%** | 100% |
+| | medium | 200.000 | 42.220 | 21,11% | 100% |
+| | large | 400.000 | 58.317 | 14,58% | 100% |
+| | larger | 800.000 | 91.468 | 11,43% | 100% |
+
+Três leituras:
+
+1. **A faixa do experimento original é reproduzida nas duas pontas.** O
+   registrado era "~2,6%–31%"; medimos **2,63%** (A/larger) e **31,28%**
+   (B/small). O intervalo inteiro, não uma aproximação.
+2. **O que o #8 faz não é subcontar proporcionalmente — é travar num teto quase
+   fixo.** Na Rota A a massa capturada é praticamente **constante** (22.168 →
+   24.074 → 21.789 → 21.013) enquanto o volume real cresce **8×**. O percentual
+   despenca só porque o denominador cresce e o numerador não. Essa é a
+   caracterização mais precisa do bug que o projeto produziu — mais útil que
+   "captura ~2,6%", que é um artefato do tamanho escolhido.
+3. **`Movie` intacto em 100% nas oito corridas** isola o gatilho sem ambiguidade:
+   a única diferença entre as duas entidades é `User` ter
+   `watchedMovies`/`favoriteMovies` de tamanho variável. É o `ArraySC.equals`
+   ignorando tamanho, e nada mais.
+
+A **estrutura** sai correta em todas: `User` tem as 2 variações certas (o
+gerador liga `postcode` e `surname`+`favoritos` no mesmo `i % 2`, então só
+existem 2 perfis). No `up_a_larger`, 420 linhas de tripla colapsam nelas e
+sobrevive só o `count` da primeira de cada grupo (954 e 20.059).
+
+### O enunciado preciso: depende da **ordem de leitura**, não do sorteio do dado
+
+Uma versão anterior desta seção advertia que os percentuais eram "uma amostra,
+não constantes". **A bateria de 3 sementes (23, 69, 207) refutou isso** — os
+mesmos experimentos, com dados sorteados independentemente, reproduzem os
+percentuais dentro de **1,7% no pior caso**:
+
+| Rota | Tamanho | seed 23 | seed 69 | seed 207 | Amplitude |
+|---|---|---|---|---|---|
+| A | small | 22,4% | 22,0% | 22,4% | 1,7% |
+| A | larger | **2,6%** | **2,6%** | **2,6%** | 1,5% |
+| B | small | **31,2%** | **31,0%** | **31,1%** | 0,5% |
+| B | larger | 11,5% | 11,5% | 11,5% | 0,5% |
+
+O número de linhas de tripla é **idêntico** entre as sementes (13/31/111/421 na
+Rota A; 21/43/133/463 na B).
+
+Os dois achados não se contradizem — eles isolam a variável:
+
+- **Northwind:** *mesmo* dado, ordem de leitura *diferente* (arquivo vs. cursor) → resultado **diferente** (15 vs. 12 divergências).
+- **User Profiles:** dado *diferente* (3 sementes), ordem de leitura *igual* (o gerador insere em `for i in range(n)` e o cursor devolve aproximadamente na ordem de inserção) → resultado **igual**.
+
+Ou seja: **o que decide qual variação sobrevive ao colapso é a ordem em que as
+ocorrências chegam, não quais valores elas têm.** Consequência prática para o
+texto: os percentuais podem ser citados como propriedade estrutural; o que
+precisa vir declarado junto é o **caminho de extração**, porque é ele que fixa
+a ordem.
 
 ### Incerteza declarada, adjacente ao #8
 
@@ -592,7 +693,7 @@ se alguém "consertar" o método, o teste cai e obriga a leitura daqui.
 
 **Correção upstream.** Trocar o guarda por `11 <= remainder && remainder <= 13`
 (com `remainder` já sendo `number % 100`) e remover a reatribuição. Como o
-`Inflector` é cópia vendorizada do ModeShape, a correção cabe **também** lá — e
+`Inflector` é cópia versionada do ModeShape, a correção cabe **também** lá — e
 o mesmo defeito deve estar em toda a linhagem de cópias dessa classe.
 
 ---
@@ -647,7 +748,7 @@ nenhuma entrada válida, e fecha a única inconsistência de contrato da classe.
 
 ## I3 — o javadoc do `titleCase` documenta um método que não existe
 
-`Inflector.java:444-445` (idêntico nas duas cópias vendorizadas):
+`Inflector.java:444-445` (idêntico nas duas cópias versionadas):
 
 ```java
  *   inflector.titleCase("man from the boondocks")       #=> "Man From The Boondocks"
@@ -1012,6 +1113,133 @@ por outro produziu `Apple_AND_Zebra` (variação real) e `Zebra_AND_Apple`
 
 ---
 
+## E1 — leitura *eager* do Neo4j colapsa a vazão do bolt em resultado grande
+
+**Defeito do porte, corrigido em 08/08/2026.** Está catalogado aqui porque
+durante seis dias foi diagnosticado errado, e o diagnóstico errado chegou a
+virar decisão de projeto (o `--settle`) e a contaminar os tempos do paradigma
+grafo. O prefixo `E` era de *ambiente* — a investigação mostrou que a causa é
+**nossa**, não do servidor. A letra fica para não quebrar as citações.
+
+### O que era
+
+`_read_label_combination` (`extractors/neo4j.py`) lia com
+`driver.execute_query`, que é **eager**: materializa a lista inteira antes de
+devolver. No `large` são 2,66 milhões de registros, cada um com o nó completo.
+
+Conforme a lista cresce, o processo passa mais tempo alocando memória e menos
+drenando o socket. O buffer de recepção enche, o TCP fecha a janela — que é o
+comportamento correto do controle de fluxo — e o servidor fica **impedido de
+enviar**. A vazão desaba para ~47 KB/s, em loopback.
+
+Visto de fora parece impasse: os dois lados ociosos (~2% de CPU), transação
+`Running` há dezenas de minutos, memória de sobra na máquina. Não é impasse — é
+rastejo. O `ss -tni` do lado servidor é o que fecha o diagnóstico:
+
+```text
+rwnd_limited: 1001379ms (100,0%)     snd_wnd: 9216     Recv-Q: 0
+```
+
+Cem por cento do tempo bloqueado pela janela do cliente.
+
+### A medição que decidiu
+
+Mesma *query*, mesmo servidor, mesmo instante, 200 mil registros:
+
+| consumo | tempo | taxa | memória |
+|---|---|---|---|
+| streaming (`session.run`) | 6,3s | 31.549 rec/s | constante |
+| eager (`driver.execute_query`) | 39,6s | 5.045 rec/s | 424 MB |
+
+**6,3× mais lento**, e o problema se realimenta: quanto maior a lista, mais
+devagar se lê. Daí o degrau — `small` e `medium` sempre passavam, `large` e
+`larger` colapsavam.
+
+### A correção
+
+`_read_label_combination` virou **gerador** sobre `session.run()`. Mesma
+*query*, mesmos registros, mesma ordem; o chamador
+(`extract_archetype_counts`) já recebia `Iterator`. O `large` passou de "não
+terminou em 15 min" para **121,0s**, com as contagens fechando (400.000 `User`
+em 6 variações, 200.000 `Movie`, 9 arquétipos).
+
+Os 121,0s batem com os 120,34s medidos em 02/08 para o mesmo tamanho: a correção
+não deixa mais rápido que o melhor caso — **torna o melhor caso confiável**.
+
+### O que o diagnóstico anterior afirmava, e por que errava
+
+| afirmação anterior | o que a medição mostra |
+|---|---|
+| "comportamento do **servidor** Neo4j" | é do **cliente**; o servidor está ocioso esperando |
+| "deleção massiva contamina a extração seguinte" | coincidência de ordem — as baterias vão `small`→`larger`, então a maior deleção sempre precede a maior extração. O que decide é o **tamanho do resultado** |
+| "travou por 24 minutos" | não trava: rasteja a ~47 KB/s |
+| contorno: `--settle` | esperar antes de começar não muda como o cliente consome depois. Falhou com 30s **e** com 60s |
+| "não é código nosso nem do original" | é código nosso, e a correção é uma função |
+
+**Lição de método, não de Neo4j:** "os dois lados ociosos com transação aberta"
+foi lido como estado do servidor quando é a assinatura de *backpressure* — o
+consumidor não consome. A pergunta que teria encurtado seis dias é `ss -tni`,
+não `SHOW TRANSACTIONS`.
+
+### Consequência para os números já publicados: menor do que parecia
+
+**O `E1` é intermitente, não sistemático.** Quando não dispara, a extração roda
+na velocidade correta. Medido em 08/08, seed 23, contra o arquivo de 02/08:
+
+| tamanho | 02/08 (pré-correção, 3 sementes) | 08/08 (pós-correção) |
+|---|---|---|
+| `small` | 19,82 · 21,89 · 14,92 | 13,06 · 14,80 |
+| `medium` | 38,48 · 38,69 · 38,23 | 36,55 · 36,90 |
+| `large` | 120,84 · 121,09 · 131,38 | 120,90 · 123,60 |
+| `larger` | 440,93 · 435,78 · 437,53 | 436,95 · 437,55 |
+
+Comparando **mediana com mediana** (pré · pós): `small` 19,82 · 13,93 (−29,7%);
+`medium` 38,48 · 36,72 (−4,6%); `large` 121,09 · 122,25 (+1,0%); `larger`
+437,53 · 437,25 (−0,1%). Os dois conjuntos têm tamanhos diferentes (3 e 2
+corridas), então a comparação é indicativa, não um teste.
+
+**Os tempos publicados sobrevivem** — e a leitura é essa, não "as medianas
+batem": nos dois tamanhos grandes elas batem (≤1%), e nos dois menores o
+pós-correção é **mais rápido**. Um número publicado que o `E1` inflou erra para
+cima, nunca para baixo, então nenhuma conclusão da tabela de 02/08 depende de
+tempo que a correção teria encurtado. O `small`, com os 30% de diferença, é o
+tamanho onde o `E1` mais pesava em termos relativos — 6 segundos de resíduo
+sobre uma corrida de 14.
+
+O `E1` aparece como **outlier isolado**, não como inflação difusa: o
+`movies_min` a 56,44s contra 13–15s do normal, e o `large` a 267,43s de 01/08.
+São as corridas em que ele pegou.
+
+E é por isso que a **regra da mediana de 3** salvou as tabelas de 02/08 — ela
+descartou exatamente as corridas contaminadas.
+
+**A correção reduziu muito o `E1`, mas não o eliminou.** Antes dela, as três
+tentativas de rodar a bateria travaram; depois, a suíte de três sementes rodou
+inteira — mas ainda produziu um `small` a **156,09s** contra 13–14s do normal
+(seed 207, logo após apagar o `larger` da 69). A leitura *eager* era a causa
+**dominante**, não a única. O resíduo não foi investigado, e a regra da mediana
+segue necessária.
+
+> **Registro de correção.** Este documento afirmou, em 08/08, que os tempos de
+> `large`/`larger` anteriores estavam "inflados em grau desconhecido". A
+> remedição desmentiu. O que segue de pé é a causa, o mecanismo, a correção e o
+> fato de o `--settle` nunca ter tido efeito; o que cai é o alcance do estrago.
+
+### O que fica em aberto
+
+**A memória ainda cresce com o número de nós.** O streaming resolveu o
+transporte; `reduce_archetypes_by_node` continua agrupando por nó e manteve
+**2.958 MB** vivos no `large`. É inerente ao algoritmo, não ao fetch. No
+`larger` deve pedir ~6 GB — cabe na máquina de referência, mas é o número que
+decide se o `mapPartitions` previsto na Fase 2.0 vira necessidade.
+
+**O `--settle` foi removido** (08/08/2026), junto com o `SETTLE` da suíte: era
+contorno de uma causa que não existia, e custava ~6 min por suíte de três
+sementes. A limpeza do grafo segue acontecendo e vai para o log das baterias;
+deixou de ser gravada em 15/08, junto com a tabela `cleanup.csv`.
+
+---
+
 ## O que **não** é defeito
 
 Registrado para evitar que uma leitura futura os "corrija":
@@ -1030,6 +1258,23 @@ Registrado para evitar que uma leitura futura os "corrija":
 - **`CompareAggregate` casa variações agregadas só pelo nome do `container`**,
   ignorando as `features` delas. É o que impede recursão infinita em agregado
   cíclico — o análogo do guarda que falta em C2. Deliberado.
+- **A entidade agregada é unificada pelo nome do campo, não pelo caminho até ele
+  — logo, coleções diferentes que embutem um campo homônimo colapsam numa
+  entidade só.** Verificado no fonte (02/08/2026): `SchemaInference:233`
+  singulariza o nome do elemento no caso do array (`details` → `detail`);
+  `:188` define `schema.entityName` como esse nome capitalizado, **sem** a
+  coleção de origem nem o caminho; e `:55`/`:201-217` acumulam tudo num
+  `Map<String, List<SchemaComponent>>` **com chave só de nome**, onde cada
+  esqueleto novo é comparado com as variações já presentes e reusado ou anexado.
+  O tipo do mapa é a evidência de design. **Efeito no Northwind:**
+  `orders.details` e `purchase_orders.details` viram um único `Detail` com
+  **5 variações** em duas famílias disjuntas — v1-v3 com `unit_price`/`discount`/
+  `status_id` (linha de venda), v4-v5 com `unit_cost`/`date_received`/
+  `posted_to_inventory` (linha de compra) —, e cada `Aggregate` aponta só para o
+  subconjunto que ocorre naquela variação-pai (`Orders` nunca alcança v4/v5).
+  Desconfortável semanticamente, mas consistente e intencional: em outro dataset
+  o mesmo mecanismo unifica um `address` embutido em `customers` e em
+  `suppliers`, que é o efeito desejável. **Não perde dado — diferente do #8.**
 - **`CompareStructuralVariation` ignora `variationId`, `count` e `timestamp`.**
   Há comentário explícito no upstream: *"Please note we do not compare
   variationId, count nor timestamp."* É a definição de equivalência
@@ -1083,7 +1328,7 @@ Ordem sugerida, do mais defensável ao mais invasivo:
    objetivamente errados (`111st`), em método que ninguém do pipeline chama.
    Merece um teste novo: o `InflectorTest` do upstream não cobre `x11`–`x13` fora
    do primeiro. **Atenção ao alvo**: `I1`, `I2` e `I3` estão no `Inflector`, que é
-   cópia vendorizada do **ModeShape** — o PR mais útil vai para lá, e o U-Schema só
+   cópia versionada do **ModeShape** — o PR mais útil vai para lá, e o U-Schema só
    precisa reavaliar a cópia.
 8. **C3** — guarda de nulo em `compareNames`, ou anotação `@NonNull`. Não muda
    comportamento em modelo válido.
@@ -1097,8 +1342,13 @@ Ordem sugerida, do mais defensável ao mais invasivo:
     `lastTimestamp` da ocorrência nova na variação reaproveitada, em vez de
     simplesmente descartá-la. **Muda números publicados** (contagens e
     janelas de tempo de toda entidade cujas variações colapsam). Precisa vir
-    acompanhado dos dados de antes/depois (é exatamente o que a Fase 3
-    produz).
+    acompanhado dos dados de antes/depois — que a Fase 3 **não** produz por
+    decisão (o porte replica o #8; não há variante corrigida). O argumento mais
+    forte que a Fase 3 entrega é outro, e é suficiente para justificar a
+    proposta: o resultado atual é **ordem-dependente** (ver o achado de
+    31/07/2026 na seção #8) — duas leituras do mesmo banco publicam contagens
+    diferentes, o que torna o `count` do modelo não-reprodutível mesmo com o
+    dado imutável.
 12. **C1** — comparar todos os `isFeaturedBy` via multiset (correção já escrita,
     ver a seção C1). Muda vereditos do harness de validação do próprio upstream,
     mas só na direção segura: reprova a mais, nunca aprova a mais.

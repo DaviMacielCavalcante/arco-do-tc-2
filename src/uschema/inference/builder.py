@@ -404,7 +404,7 @@ class USchemaModelBuilder:
 
         Notes
         -----
-        ⚠️ **Bug #7** — no ramo homogêneo, o guarda ``size() == 0`` tem de vir
+        **Bug #7** — no ramo homogêneo, o guarda ``size() == 0`` tem de vir
         **antes** de qualquer acesso a ``inners[0]``. O original materializa o
         ``inner`` na ``:255`` e só testa na ``:256``; aqui a ordem correta é
         por construção.

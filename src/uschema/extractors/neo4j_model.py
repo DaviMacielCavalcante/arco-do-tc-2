@@ -77,6 +77,8 @@ from typing import Any
 
 from pyecore.ecore import EObject, EPackage
 
+from uschema.extractors.neo4j import get_type_name
+
 __all__ = ["build_uschema_from_archetypes"]
 
 #: ``Constants.LABELS_JOINER`` — separador entre labels de um nó multi-label
@@ -313,8 +315,6 @@ class _StructuralVariationBuilder:
         replica o achado do round-trip de JSON (``Long``→``"integer"``,
         heterogêneo/vazio→``"string[]"``); ver ``extractors/neo4j.py``.
         """
-        from uschema.extractors.neo4j import get_type_name
-
         for name, sentinel in properties.items():
             attribute = self._builder.create_attribute(name, get_type_name(sentinel))
             variation.features.append(attribute)

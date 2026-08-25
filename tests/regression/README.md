@@ -4,7 +4,7 @@ A camada de validação **mais barata e localizante**: cada JUnit minúsculo do
 repositório Java vira um teste pytest com a **mesma entrada** e as **mesmas
 asserções**, localizando o erro no módulo antes de qualquer rodada ponta a ponta.
 
-> 📋 **O inventário completo está em [`INVENTARIO.md`](INVENTARIO.md)** (entrega da
+> **O inventário completo está em [`INVENTARIO.md`](INVENTARIO.md)** (entrega da
 > Fase 0.4): os 37 `*Test.java` do original classificados, o que portar, para onde,
 > em que ordem, e o que **não** portar. Leia antes de portar qualquer um.
 
@@ -26,8 +26,8 @@ Mapeamento teste → módulo do porte:
 | `InflectorTest` | `naming.inflector` (0.6) | capitalização/pluralização | não — **desbloqueado hoje** |
 | `J2SchemaSimpleTests` | `intermediate.raw` (1.1) | JSON → schema cru | não |
 | `OptionalTest` | `inference.strategies` (1.3b) + pipeline | opcionalidade entre variações | não — **portado** |
-| `RemovePMapTest` | ⚠️ `m2m.USchemaToDocumentDb` (1.4b) | remoção de PMap | não — **não é o builder** (ver `INVENTARIO.md`) |
-| `RelationshipTypeToEntityTypeTest` | ⚠️ `m2m.USchemaToDocumentDb` (1.4b) | RelationshipType → EntityType | não — **não é o builder** (ver `INVENTARIO.md`) |
+| `RemovePMapTest` | `m2m.USchemaToDocumentDb` (1.4b) | remoção de PMap | não — **não é o builder** (ver `INVENTARIO.md`) |
+| `RelationshipTypeToEntityTypeTest` | `m2m.USchemaToDocumentDb` (1.4b) | RelationshipType → EntityType | não — **não é o builder** (ver `INVENTARIO.md`) |
 | `SimplificationTest`, `PairOperationsTest` | `extractors.mongo` (2.1) | simplificação e operações de par | não |
 | `CountTimestampTest` | `inference.schema_inference` (1.2) | count/timestamp por variação (**#8**) | sim → cortar na tripla |
 | `ObjectIdTest` | tipos (1.2) | distinguir ObjectId de String (**#6**) | sim → cortar na tripla |

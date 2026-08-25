@@ -264,11 +264,20 @@ def drop_all(session: Session) -> None:
 def main() -> None:
     """Parseia os argumentos de linha de comando e roda a geração ponta a ponta.
 
-    Lê `--size` (obrigatório) para escolher a escala, conecta no Neo4j via
+    Lê `--size` (obrigatório) para escolher o tamanho, conecta no Neo4j via
     `--uri`/`--user`/`--password`, opcionalmente apaga o grafo existente
     (`--drop`) e gera Movies, Users e as arestas WATCHED/FAVORITE em lotes,
     imprimindo o tempo de cada etapa. Sem parâmetros de função — lê
     `sys.argv` via `argparse`.
+
+    Notes
+    -----
+    `--seed` fixa o gerador pseudoaleatório e é o que torna o dataset
+    **reprodutível**. Sem ela, cada execução sorteia usuários isolados
+    (~15%) e favoritos de forma diferente: os totais de nós continuam
+    exatos, mas a divisão entre as variações de ``User`` muda — e o
+    ``compare()`` contra os XMIs-oráculo passa a acusar divergências de
+    ``count`` que **não** são defeito do porte. Ver `todolist_fase3.md` §3.1.
     """
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", choices=list(SIZES), required=True)
@@ -280,19 +289,27 @@ def main() -> None:
         action="store_true",
         help="apagar o grafo antes de gerar (recomendado entre execuções)",
     )
+    ap.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="semente do RNG; omitir dá um sorteio novo a cada execução (não reprodutível)",
+    )
     args = ap.parse_args()
+
+    random.seed(args.seed)
 
     cfg = SIZES[args.size]
     auth = (args.user, args.password) if args.user else None
-    print(f"== size {args.size} | uri {args.uri} ==")
-    print(f"   User={cfg['user']}  Movie={cfg['movie']}  arestas~{cfg['rels']}/user")
+    print(
+        f"== size {args.size} | seed {args.seed} | "
+        f"User={cfg['user']} Movie={cfg['movie']} arestas~{cfg['rels']}/user =="
+    )
 
     t0 = time.time()
     with GraphDatabase.driver(args.uri, auth=auth) as driver, driver.session() as session:
         if args.drop:
-            print("   apagando grafo anterior...")
             drop_all(session)
-            print("   (grafo apagado)")
 
         session.run(CQL_CONSTRAINT_MOVIE).consume()
         session.run(CQL_CONSTRAINT_USER).consume()
@@ -310,8 +327,6 @@ def main() -> None:
         print(f"  arestas: WATCHED={n_w} FAVORITE={n_f} em {time.time() - te:.1f}s")
 
     print(f"== concluído em {time.time() - t0:.1f}s ==")
-    print("   Agora rode a extração (Neo4j2USchemaMain) e leia o tempo de")
-    print("   inferência no log do Spark ('Job ... finished ... took').")
 
 
 if __name__ == "__main__":

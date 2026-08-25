@@ -307,7 +307,7 @@ class SchemaInference:
 
         Notes
         -----
-        ⚠️ **Sem guarda, de propósito.** Se o Joiner já removeu uma chave de
+        **Sem guarda, de propósito.** Se o Joiner já removeu uma chave de
         ``raw_entities`` que ``inner_schema_names`` ainda referencia, o Java
         estoura ``NullPointerException`` no ``for``-each sobre ``null``; aqui
         o acesso direto ao dict estoura ``KeyError``. Decisão explícita:

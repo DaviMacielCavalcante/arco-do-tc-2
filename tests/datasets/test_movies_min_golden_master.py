@@ -16,7 +16,7 @@ são todas distintas na estrutura, então nenhuma é fundida).
 
 Proveniência da fixture (honestidade sobre o que isto valida)
 ------------------------------------------------------------
-Os quatro XMIs são o **mesmo** dataset "User Profile" em quatro escalas
+Os quatro XMIs são o **mesmo** dataset "User Profile" em quatro tamanhos
 (confirmado: mesmos nomes de entidade/relacionamento/atributo nos quatro,
 só o ``count`` e o nome do schema mudam). As linhas de arquétipo abaixo
 foram **reconstruídas lendo a própria estrutura do XMI-oráculo**

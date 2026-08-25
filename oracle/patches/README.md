@@ -1,4 +1,4 @@
-# patches/ — patches de portabilidade e corretude aplicados no build do oráculo
+# patches/ — patches de portabilidade e equivalência aplicados no build do oráculo
 
 Auditáveis e citáveis no capítulo de reprodutibilidade. Numeração herdada do
 catálogo de 8 patches originalmente previsto (ver `bugs_originais.md`), mas

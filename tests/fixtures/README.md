@@ -21,7 +21,7 @@ Os dois caminhos de extração produzem triplas **diferentes** para o mesmo dado
 | `simplify_aggr.json` | `SimplifyAggr.json` (map-reduce real) | map-reduce v1 | `persons` |
 | `mintest_spark.json` | **reconstruída** de `model_mintest.xmi` | Spark (à mão) | `products`, `customers` |
 
-⚠️ **`mintest_spark.json` é diferente das outras duas.** Não veio de um extrator
+**`mintest_spark.json` é diferente das outras duas.** Não veio de um extrator
 rodando: foi **reconstruída à mão** a partir da estrutura de
 `resources/mongodb/model_mintest.xmi`, seguindo as regras do `Helpers.simplify`
 do caminho **Spark** (`_id` como `{"$oid": …}`, folhas como sentinelas de tipo,

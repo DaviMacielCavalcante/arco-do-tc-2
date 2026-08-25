@@ -8,7 +8,7 @@ Por quê este script existe
 rodaram contra um MongoDB real. `simplify`/`build_triples` (a lógica pura) já
 foram validadas contra o Northwind real na Fase 2.3, mas lendo os JSONs direto
 com ``bson.json_util.loads`` — sem passar pelo cursor `pymongo`. Este script
-fecha essa lacuna, igual ``verificar_extracao_neo4j.py`` fechou pro Neo4j.
+fecha essa lacuna, igual ``check_extraction_neo4j.py`` fechou pro Neo4j.
 
 Três coisas testadas
 ----------------------
@@ -36,11 +36,11 @@ Precisa do pacote ``uschema`` (este repo) no ``PYTHONPATH``, e um MongoDB
 acessível (local, ou um cluster grátis do MongoDB Atlas)::
 
     cd arco-do-tc-2  # raiz do repo, onde fica src/
-    PYTHONPATH=src python3 scripts/verificar_extracao_mongo.py \
+    PYTHONPATH=src python3 scripts/check_extraction_mongo.py \
         --uri "mongodb://localhost:27017" --db verificacao_manual --drop
 
     # com o Northwind real também:
-    PYTHONPATH=src python3 scripts/verificar_extracao_mongo.py \
+    PYTHONPATH=src python3 scripts/check_extraction_mongo.py \
         --uri "mongodb://localhost:27017" --db verificacao_manual --drop \
         --northwind-dir /caminho/para/mongodb-northwind/json
 

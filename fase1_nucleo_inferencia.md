@@ -1,6 +1,6 @@
 # Fase 1 — Núcleo de inferência (`doc2uschema`) · a espinha (guia detalhado)
 
-**Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Base técnica:** `analise_ferramenta_uschema.md` (§3.5, pipeline)
+**Parte de:** `roadmap_portabilidade.md`
 **Entregável:** núcleo de inferência `doc2uschema` · **Pré-requisito:** Fase 0 (PyEcore + harness)
 
 ## Objetivo
@@ -15,7 +15,9 @@ O núcleo **não recebe documentos crus**. Recebe uma lista de triplas `{schema,
 
 ## 1.1 Modelos intermediários → `dataclasses`
 
-**`intermediate/raw` (Composite):** `SchemaComponent` (base), `ObjectSC`, `ArraySC`, `StringSC`, `NumberSC`, `BooleanSC`, `NullSC`, `ObjectIdSC`. **`intermediate/firsto`:** `MultiValued`, `NumberWithRangeSC`, `Ranged`, `StringMultiValuedSC`.
+**`intermediate/raw` (Composite):** `SchemaComponent` (base), `ObjectSC`, `ArraySC`, `StringSC`, `NumberSC`, `BooleanSC`, `NullSC`, `ObjectIdSC`.
+
+> **`intermediate/firsto` saiu do escopo** (`MultiValued`, `NumberWithRangeSC`, `Ranged`, `StringMultiValuedSC`). O `grep` das quatro classes no repo Java não acha **nenhuma** referência fora do próprio pacote: código morto. **Não há `firsto.py`** — decisão registrada em `todolist_fase1.md` §1.1, que é a fonte da verdade sobre o que a fase entregou.
 
 **Tarefas:**
 - [ ] Portar a hierarquia `raw` como `dataclasses` (árvore recursiva; `ObjectSC` contém features nomeadas; `ArraySC` contém `inners`).
@@ -94,7 +96,7 @@ Os dados de teste (`testSources/*.json`) vêm junto — reaproveitar.
 
 ## Ordem de porte sugerida (bottom-up, test-alongside)
 
-1. `raw`/`firsto` (`dataclasses` + igualdade estrutural) → testes de `__eq__` (+ `RemovePMapTest`).
+1. `raw` (`dataclasses` + igualdade estrutural) → testes de `__eq__` (+ `RemovePMapTest`).
 2. `infer` recursivo (replicando o colapso de variações **sem** `combineMetadata` — bug #8) → portar `CountTimestampTest`, `ObjectIdTest`, `TypesTest` + teste novo confirmando que `meta` da segunda ocorrência é descartado no colapso.
 3. Estratégias (uma a uma, com testes isolados) → portar `OptionalTest`, `SimplifyAggrTest`.
 4. `USchemaModelBuilder.build` + `fillEV` → portar `RelationshipTypeToEntityTypeTest`; produzir o XMI via PyEcore.
@@ -106,7 +108,7 @@ Dois níveis: (a) **por módulo** — os testes de regressão portados (§1.6) p
 
 ## Entregáveis
 
-`raw.py` + `firsto.py` (modelos intermediários), `strategies.py` (as 6 estratégias + `Null*`), `inference.py` (`SchemaInference`), `builder.py` (`USchemaModelBuilder`/`fillEV`), e a **suíte de testes portada** (regressão JUnit do repo: `CountTimestamp`/`ObjectId`/`Types`/`Optional`/`SimplifyAggr`/`RelationshipTypeToEntityType`/`RemovePMap` + teste novo confirmando o #8 — `meta` inteiro da segunda ocorrência descartado no colapso, fiel ao original — + testes de `__eq__` e por estratégia).
+`raw.py` (modelos intermediários; **sem** `firsto.py` — ver §1.1), `strategies.py` (as 6 estratégias + `Null*`), `schema_inference.py` (`SchemaInference`), `builder.py` (`USchemaModelBuilder`/`fillEV`), e a **suíte de testes portada** (regressão JUnit do repo: `CountTimestamp`/`ObjectId`/`Types`/`Optional`/`SimplifyAggr`/`RelationshipTypeToEntityType`/`RemovePMap` + teste novo confirmando o #8 — `meta` inteiro da segunda ocorrência descartado no colapso, fiel ao original — + testes de `__eq__` e por estratégia).
 
 ## Riscos da fase
 

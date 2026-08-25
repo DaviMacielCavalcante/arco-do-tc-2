@@ -60,7 +60,7 @@ class SchemaComponent:
     faltando, não semântica, como o bug ``I2`` do Inflector (ver
     ``naming/inflector.py``). Registrar aqui se a decisão mudar.
 
-    ⚠️ **A checagem de tipo é assimétrica no original, e replicamos a
+    **A checagem de tipo é assimétrica no original, e replicamos a
     assimetria.** Esta base compara a **classe exata**
     (``SchemaComponent.java:8``, ``getClass().getName()``), mas ``ObjectSC`` e
     ``ArraySC`` sobrescrevem usando **``instanceof``** (``ObjectSC.java:31``,
@@ -292,7 +292,7 @@ class ArraySC(SchemaComponent):
         autor nas ``:90-95`` explica que reconciliar tamanhos exigiria um passo
         a mais — e é a origem do bug **#8**: dois arrays homogêneos de tamanhos
         diferentes são iguais, as variações colapsam e só uma sobrevive.
-        ⚠️ Quando isso acontece, o ``infer`` (1.2) **não** combina ``meta``
+        Quando isso acontece, o ``infer`` (1.2) **não** combina ``meta``
         nenhum — ``SchemaInference.java:207-211`` só faz
         ``retSchema = foundSchema.get();``. O ``meta`` inteiro da ocorrência
         descartada (count+timestamps) some, e junto com ele qualquer

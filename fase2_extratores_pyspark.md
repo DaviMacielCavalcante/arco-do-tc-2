@@ -1,12 +1,14 @@
 # Fase 2 — Extratores em PySpark (MongoDB + Neo4j) (guia detalhado)
 
-**Parte de:** `roadmap_portabilidade.md` · **Validação:** `roteiro_experimental.md` · **Base técnica:** `analise_ferramenta_uschema.md` (§3.3–3.4)
+**Parte de:** `roadmap_portabilidade.md`
 **Entregável:** extratores PySpark (MongoDB + Neo4j) · **Pré-requisito:** Fase 0 (oráculo + harness); integra com a Fase 1 pelo formato da tripla
 
-> ⚠️ **Guia desatualizado — fonte de verdade agora é `todolist_fase2.md`.**
+> **Guia desatualizado — fonte de verdade agora é `todolist_fase2.md`.**
 > §2.1 referencia o extrator MongoDB errado (`ArchetypeMapping`, não
 > `Helpers`); a leitura é via driver nativo (`pymongo`/`neo4j`), não conector
-> Spark.
+> Spark. **As caixas `[ ]` abaixo estão congeladas no estado do plano
+> original** — a Fase 2 foi concluída e o status real (com as correções de
+> premissa) está no `todolist_fase2.md`.
 
 ## Objetivo
 

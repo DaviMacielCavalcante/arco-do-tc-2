@@ -234,7 +234,7 @@ compila ou o `main` nem roda fora da máquina do autor original:
 ### #6, #7 — crashes reais, descobertos rodando de verdade
 
 A primeira versão deste Dockerfile deixava #6, #7 e #8 igualmente sem
-patch, generalizando a lógica "bug de corretude, corrigido só no porte
+patch, generalizando a lógica "bug de equivalência, corrigido só no porte
 Python". Isso estava errado para #6 e #7: rodar o build/run de verdade
 contra o Northwind expôs os dois como **crashes que abortam o job Spark
 inteiro**, não como números levemente errados.
@@ -253,7 +253,7 @@ inteiro**, não como números levemente errados.
   chama `sc.getInners().get(0)` **antes** de checar `sc.size() == 0`,
   lançando `IndexOutOfBoundsException` ("Index: 0, Size: 0") pra qualquer
   documento com um array vazio (~15% dos documentos na Rota B do plano de
-  escala, por `bugs_originais.md`). `bugs_originais.md` não usava o mesmo
+  tamanho, por `bugs_originais.md`). `bugs_originais.md` não usava o mesmo
   cabeçalho "patch no oráculo" pra esse item, mas o sintoma documentado já
   dizia a mesma coisa — não é um bug "silencioso", é outro crash
   incondicional. Corrigido aproveitando o short-circuit do `||` que já
