@@ -27,9 +27,10 @@ array — é descartado. Este módulo replica isso fielmente: **não** chama
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from typing import Any
 
-from uschema.extractors.triple import JsonKind, classify
+from uschema.extractors.triple import JsonKind, SchemaTriple, classify
 from uschema.inference.strategies import join_aggregated_entities, merge_equivalent_evs
 from uschema.intermediate.metadata import ObjectMetadata
 from uschema.intermediate.raw import (
@@ -51,6 +52,7 @@ _TYPE_MARKER_ATTRIBUTE = "_type"
 
 _Joiner = Callable[[dict[str, list[SchemaComponent]], set[str]], None]
 _Merger = Callable[[dict[str, list[SchemaComponent]]], None]
+
 
 class SchemaInference:
     """Núcleo da inferência: consome triplas, devolve ``rawEntities``.
@@ -104,7 +106,7 @@ class SchemaInference:
         self._type_marker_attribute = type_marker_attribute
         self._ignored_attributes = ignored_attributes
 
-    def infer(self, triples):
+    def infer(self, triples: Iterable[SchemaTriple]) -> dict[str, list[SchemaComponent]]:
         """Inferir ``rawEntities`` a partir das triplas (Fase 1.0).
 
         Porte de ``infer(IAJArray rows)`` (``:125-146``), o método público.
@@ -141,7 +143,7 @@ class SchemaInference:
         self._merger(self._raw_entities)
         return self._raw_entities
 
-    def _infer(self, value, name, is_root, meta):
+    def _infer(self, value: Any, name: str, is_root: bool, meta: ObjectMetadata) -> SchemaComponent:
         """Despachar por tipo de valor JSON, via ``classify``.
 
         Porte do despachante privado ``infer(IAJElement, ...)`` (``:148-174``).
@@ -190,7 +192,9 @@ class SchemaInference:
         else:
             raise AssertionError(f"classify() devolveu um JsonKind não tratado: {kind!r}")
 
-    def _infer_object(self, value, name, is_root, meta):
+    def _infer_object(
+        self, value: Any, name: str, is_root: bool, meta: ObjectMetadata
+    ) -> SchemaComponent:
         """Inferir um ``ObjectSC``, colapsando variações repetidas.
 
         Porte de ``infer(IAJObject, ...)`` (``:176-225``).
@@ -231,15 +235,18 @@ class SchemaInference:
         """
         if is_root:
             original_name = name
-            name = value.get(self._type_marker_attribute)
-            if name is not None:
-                name = get_inflector().capitalize(name)
-            elif name is None:
-                name = get_inflector().capitalize(original_name)
-        else:
-            name = get_inflector().capitalize(name)
 
-        schema = ObjectSC(is_root=is_root, meta=meta, entity_name=name)
+            another_name = value.get(self._type_marker_attribute)
+            if another_name is not None:
+                capitalized_name = get_inflector().capitalize(another_name)
+            elif another_name is None:
+                capitalized_name = get_inflector().capitalize(original_name)
+
+        else:
+            capitalized_name = get_inflector().capitalize(name)
+
+        assert capitalized_name is not None
+        schema = ObjectSC(is_root=is_root, meta=meta, entity_name=capitalized_name)
 
         sorted_fields = sorted(
             [field_name for field_name in value if field_name not in self._ignored_attributes],
@@ -250,7 +257,7 @@ class SchemaInference:
             result = self._infer(value[field_name], field_name, False, ObjectMetadata())
             schema.add((field_name, result))
 
-        entity_variations = self._raw_entities.get(schema.entity_name)
+        entity_variations = self._raw_entities.get(capitalized_name)
         if entity_variations is not None:
             for variation in entity_variations:
                 if variation == schema:
@@ -259,13 +266,14 @@ class SchemaInference:
             entity_variations.append(schema)
             return schema
         else:
-            new_list = [schema]
-            self._raw_entities[schema.entity_name] = new_list
+            new_list: list[SchemaComponent] = [schema]
+
+            self._raw_entities[capitalized_name] = new_list
             if not is_root:
-                self._inner_schema_names.add(schema.entity_name)
+                self._inner_schema_names.add(capitalized_name)
             return schema
 
-    def _infer_array(self, value, name):
+    def _infer_array(self, value: Any, name: str) -> ArraySC:
         """Inferir um ``ArraySC``, deduplicando elementos consecutivos-ou-não.
 
         Porte de ``infer(IAJArray n, String elementName)`` (``:227-245``).
@@ -293,6 +301,7 @@ class SchemaInference:
         ``__eq__``/``__hash__`` de ``SchemaComponent``.
         """
         single_name = get_inflector().singularize(name)
+        assert single_name is not None
         save = []
         for element in value:
             save.append(self._infer(element, single_name, is_root=False, meta=ObjectMetadata()))
@@ -303,23 +312,23 @@ class SchemaInference:
         new_array.add_all(dedup)
         return new_array
 
-    def _infer_boolean(self, value, name):
+    def _infer_boolean(self, value: Any, name: str) -> BooleanSC:
         """Folha booleana, sem estado (``infer(IAJBoolean, ...)``, ``:247-251``)."""
         return BooleanSC()
 
-    def _infer_number(self, value, name):
+    def _infer_number(self, value: Any, name: str) -> NumberSC:
         """Folha numérica, sem estado (``infer(IAJNumber, ...)``, ``:253-257``)."""
         return NumberSC()
 
-    def _infer_textual(self, value, name):
+    def _infer_textual(self, value: Any, name: str) -> StringSC:
         """Folha textual, sem estado (``infer(IAJTextual, ...)``, ``:265-269``)."""
         return StringSC()
 
-    def _infer_null(self, value, name):
+    def _infer_null(self, value: Any, name: str) -> NullSC:
         """Folha nula, sem estado (``infer(IAJNull, ...)``, ``:259-263``)."""
         return NullSC()
 
-    def _infer_object_id(self, value, name):
+    def _infer_object_id(self, value: Any, name: str) -> ObjectIdSC:
         """Folha ``ObjectId``, sem estado (``infer(IAJObjectId, ...)``, ``:271-275``)."""
         return ObjectIdSC()
 
@@ -351,7 +360,9 @@ def _java_string_sort_key(value: str) -> bytes:
     return value.encode("utf-16-be", "surrogatepass")
 
 
-def inner_count_and_time_stamps_adjust(inner_schema_names, raw_entities):
+def inner_count_and_time_stamps_adjust(
+    inner_schema_names: set[str], raw_entities: dict[str, list[SchemaComponent]]
+) -> None:
     """Propagar ``meta`` das ocorrências-raiz para as entidades internas.
 
     Porte de ``innerCountAndTimestampsAdjust`` (``SchemaInference.java:92-114``).
@@ -375,8 +386,12 @@ def inner_count_and_time_stamps_adjust(inner_schema_names, raw_entities):
     all_schema_components = [item for raw in raw_entities.values() for item in raw]
     for inner_schema in inner_schema_names:
         for non_root_obj in raw_entities[inner_schema]:
+            assert isinstance(non_root_obj, ObjectSC)
             for sc in all_schema_components:
+                assert isinstance(sc, ObjectSC)
                 if contains_schema_component(sc, non_root_obj):
+                    assert isinstance(sc.meta, ObjectMetadata)
+                    assert isinstance(non_root_obj.meta, ObjectMetadata)
                     non_root_obj.meta.combine_metadata(sc.meta)
 
 
