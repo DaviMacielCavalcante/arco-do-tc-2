@@ -1,3 +1,57 @@
+"""``SchemaInference.infer`` — o núcleo da inferência (Fase 1.2).
+
+Porte de ``SchemaInference.java``. Consome a lista de :class:`SchemaTriple`
+(Fase 1.0, já validada em ``extractors/triple.py``) e devolve
+``raw_entities``: um mapa entidade → lista de variações estruturais
+(:class:`~uschema.intermediate.raw.ObjectSC`).
+
+Os cinco passos, na ordem do original (``SchemaInference.java:125-146`` —
+**não reordenar**, é *load-bearing*):
+
+1. ``forEach`` das triplas, cada uma via ``_infer`` recursivo.
+2. Colapso inline de variações iguais (dentro do passo 1, por entidade, em
+   ``_infer_object``).
+3. ``joiner`` — une entidades-alias (Fase 1.3a, ``join_aggregated_entities``).
+4. ``inner_count_and_time_stamps_adjust`` — propaga meta pras entidades
+   internas.
+5. ``merger`` — funde variações equivalentes (Fase 1.3a,
+   ``merge_equivalent_evs``).
+
+Sobre o bug **#8** (``bugs_originais.md``): ao colapsar uma variação nova numa
+já existente (``_infer_object``), o original **não** combina metadados —
+``retSchema = foundSchema.get();`` e mais nada (``:207-211``). O ``meta``
+inteiro da ocorrência nova — ``count`` **e** timestamps, não só bounds de
+array — é descartado. Este módulo replica isso fielmente: **não** chama
+``combine_metadata`` nesse ponto, de propósito.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from uschema.extractors.triple import JsonKind, classify
+from uschema.inference.strategies import join_aggregated_entities, merge_equivalent_evs
+from uschema.intermediate.metadata import ObjectMetadata
+from uschema.intermediate.raw import (
+    ArraySC,
+    BooleanSC,
+    NullSC,
+    NumberSC,
+    ObjectIdSC,
+    ObjectSC,
+    SchemaComponent,
+    StringSC,
+)
+from uschema.naming.inflector import get_instance as get_inflector
+
+__all__ = ["SchemaInference"]
+
+_IGNORED_ATTRIBUTES: frozenset[str] = frozenset({"_type"})
+_TYPE_MARKER_ATTRIBUTE = "_type"
+
+_Joiner = Callable[[dict[str, list[SchemaComponent]], set[str]], None]
+_Merger = Callable[[dict[str, list[SchemaComponent]]], None]
+
 class SchemaInference:
     """Núcleo da inferência: consome triplas, devolve ``rawEntities``.
 
@@ -175,7 +229,7 @@ class SchemaInference:
         chamar ``combine_metadata``. O ``meta`` da ocorrência nova é
         descartado de propósito.
         """
-        if is_root == True:
+        if is_root:
             original_name = name
             name = value.get(self._type_marker_attribute)
             if name is not None:
@@ -188,7 +242,7 @@ class SchemaInference:
         schema = ObjectSC(is_root=is_root, meta=meta, entity_name=name)
 
         sorted_fields = sorted(
-            [field_name for field_name in value.keys() if field_name not in self._ignored_attributes],
+            [field_name for field_name in value if field_name not in self._ignored_attributes],
             key=_java_string_sort_key,
         )
 
@@ -207,7 +261,7 @@ class SchemaInference:
         else:
             new_list = [schema]
             self._raw_entities[schema.entity_name] = new_list
-            if is_root == False:
+            if not is_root:
                 self._inner_schema_names.add(schema.entity_name)
             return schema
 

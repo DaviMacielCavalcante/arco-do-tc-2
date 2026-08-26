@@ -20,9 +20,7 @@ from __future__ import annotations
 
 import functools
 import re
-from collections.abc import Iterable
-
-from pyecore.ecore import EObject
+from typing import ClassVar
 
 from uschema.intermediate.raw import ArraySC, ObjectSC, SchemaComponent
 from uschema.naming.inflector import get_instance as get_inflector
@@ -55,7 +53,10 @@ _AGGREGATE_HINT_WORDS = (
 )
 
 
-def join_aggregated_entities(raw_entities: dict[str, list[SchemaComponent]], inner_schema_names: set[str]):
+def join_aggregated_entities(
+    raw_entities: dict[str, list[SchemaComponent]],
+    inner_schema_names: set[str],
+):
     """Unir entidades cujo nome é uma variação com "hint word" de agregação.
 
     Porte de ``DefaultAliasedAggregatedEntityJoiner.joinAggregatedEntities``
@@ -85,9 +86,11 @@ def join_aggregated_entities(raw_entities: dict[str, list[SchemaComponent]], inn
     """
     for inner_name in inner_schema_names:
         match_key = None
-        for entity in raw_entities.keys():
+        for entity in raw_entities:
             for hint in _AGGREGATE_HINT_WORDS:
-                if (hint + entity).casefold() == inner_name.casefold() or (entity + hint).casefold() == inner_name.casefold():
+                prefixed = (hint + entity).casefold() == inner_name.casefold()
+                suffixed = (entity + hint).casefold() == inner_name.casefold()
+                if prefixed or suffixed:
                     match_key = entity
                     break
             if match_key is not None:
@@ -136,7 +139,7 @@ def merge_equivalent_evs(raw_entities: dict[str, list[SchemaComponent]]):
      remove ``to_consider`` da lista (``:39``).
      """
      for entity in raw_entities.values():
-          
+
           list_modified = True
           while(list_modified):
                match = False
@@ -190,21 +193,22 @@ def walk_and_merge(to_consider: SchemaComponent, sc: SchemaComponent):
      ``toConsider.equals(sc)`` — igualdade estrutural das folhas sem estado,
      ver ``raw.py``).
      """
-     if type(to_consider) != type(sc):
+     if type(to_consider) is not type(sc):
           return False
      else:
         if isinstance(to_consider, ObjectSC):
               if (to_consider.size() != sc.size()):
                 return False
-              for (to_key, to_value), (sc_key, sc_value) in zip(to_consider.inners, sc.inners):
+              pairs = zip(to_consider.inners, sc.inners, strict=True)
+              for (to_key, to_value), (sc_key, sc_value) in pairs:
                    if(sc_key == to_key):
                         if (walk_and_merge(to_value, sc_value) is False):
                             return False
                    else:
                         return False
               return True
-             
-                           
+
+
         elif isinstance(to_consider, ArraySC):
               if (to_consider.homogeneous != sc.homogeneous):
                 return False
@@ -214,13 +218,13 @@ def walk_and_merge(to_consider: SchemaComponent, sc: SchemaComponent):
               else:
                   if(to_consider.size() != sc.size()):
                       return False
-                  for (to_elem, sc_elem) in zip(to_consider.inners, sc.inners):
+                  for (to_elem, sc_elem) in zip(to_consider.inners, sc.inners, strict=True):
                                           if (walk_and_merge(to_elem, sc_elem) is False):
                                               return False
-                                          
+
                   return True
 
-                  
+
         elif isinstance(to_consider, SchemaComponent):
             return to_consider == sc
 
@@ -258,7 +262,7 @@ def homogeneous_arrays_merge(to_consider: ArraySC, sc: ArraySC):
      ``lower_bounds``/``upper_bounds`` para o mín./máx. entre os dois
      (``:128,135-137``).
      """
-     if (to_consider.size() == 0 or sc.size() == 0 or to_consider.inners[0] == sc.inners[0]): 
+     if (to_consider.size() == 0 or sc.size() == 0 or to_consider.inners[0] == sc.inners[0]):
           lower_bounds = min(to_consider.lower_bounds, sc.lower_bounds)
 
           if (sc.size() == 0):
@@ -273,7 +277,11 @@ def homogeneous_arrays_merge(to_consider: ArraySC, sc: ArraySC):
      return False
 
 
-def update_references(raw_entities: dict[str, list[SchemaComponent]], old: SchemaComponent, new: SchemaComponent):
+def update_references(
+    raw_entities: dict[str, list[SchemaComponent]],
+    old: SchemaComponent,
+    new: SchemaComponent,
+):
      """Substituir toda referência a ``old`` por ``new``, em todas as entidades.
 
      Porte de ``updateReferences(Map<...>, SchemaComponent old,
@@ -421,7 +429,9 @@ class OptionalTagger:
                     for var in variations:
                          for field in var.inners:
                               new_dict[field] = new_dict.get(field, 0) + 1
-                              self.dict2[entity] = {field: t for field, t in new_dict.items() if t!= num_variations}
+                    self.dict2[entity] = {
+                         field: t for field, t in new_dict.items() if t != num_variations
+                    }
 
      def is_optional(self,entity_name, sc):
           """Dizer se um par campo/componente é opcional para uma entidade.
@@ -429,10 +439,7 @@ class OptionalTagger:
           Porte de ``isOptional`` (``DefaultOptionalTagger.java:62-66``);
           ``containsKey`` vira o operador ``in`` do Python.
           """
-          if sc in self.dict2[entity_name]:
-               return True
-          else:
-               return False
+          return sc in self.dict2[entity_name]
 
 
 class NullOptionalTagger:
@@ -476,7 +483,11 @@ def sort_by_first_timestamp(vars):
      proposital do original, replicada aqui via ``functools.cmp_to_key`` em
      vez de um ``key=`` comum, que trataria empates de forma diferente).
      """
-     vars.sort(key=functools.cmp_to_key(lambda var1, var2: -1 if var1.firstTimestamp < var2.firstTimestamp else 1))
+     vars.sort(
+          key=functools.cmp_to_key(
+               lambda var1, var2: -1 if var1.firstTimestamp < var2.firstTimestamp else 1
+          )
+     )
      reorder_variation_ids(vars)
 
 
@@ -487,7 +498,11 @@ def sort_by_last_timestamp(vars):
      (``DefaultStructuralVariationSorter.java:32-36``); mesma lógica de
      :func:`sort_by_first_timestamp`, trocando o campo comparado.
      """
-     vars.sort(key=functools.cmp_to_key(lambda var1, var2: -1 if var1.lastTimestamp < var2.lastTimestamp else 1))
+     vars.sort(
+          key=functools.cmp_to_key(
+               lambda var1, var2: -1 if var1.lastTimestamp < var2.lastTimestamp else 1
+          )
+     )
      reorder_variation_ids(vars)
 
 def sort_by_count(vars):
@@ -507,7 +522,11 @@ def sort_by_property_number(vars):
      Porte de ``sortByPropertyNumber``
      (``DefaultStructuralVariationSorter.java:44-48``).
      """
-     vars.sort(key=functools.cmp_to_key(lambda var1, var2: -1 if len(var1.features) < len(var2.features) else 1))
+     vars.sort(
+          key=functools.cmp_to_key(
+               lambda var1, var2: -1 if len(var1.features) < len(var2.features) else 1
+          )
+     )
      reorder_variation_ids(vars)
 
 def sort_structural_variations(vars):
@@ -560,17 +579,22 @@ def set_optional_properties(variations):
      ``optional`` como "não bate com nenhuma das comuns" (``:38-39``,
      ``noneMatch`` vira ``not any(...)``).
      """
-
      common_props = list(variations[0].structuralFeatures)
      optional_props = []
      for prop in common_props:
-          
-          if not (all(var is variations[0] or any(compare_feature(prop, sf) for sf in var.structuralFeatures) for var in variations)):
+          is_common = all(
+               var is variations[0]
+               or any(compare_feature(prop, sf) for sf in var.structuralFeatures)
+               for var in variations
+          )
+          if not is_common:
                optional_props.append(prop)
      common_props = [prop for prop in common_props if prop not in optional_props]
      for var in variations:
           for feat in var.structuralFeatures:
-               feat.optional = not any(compare_feature(feat, comm_prop) for comm_prop in common_props)
+               feat.optional = not any(
+                    compare_feature(feat, comm_prop) for comm_prop in common_props
+               )
 
 
 def create_reference_matcher(elements):
@@ -603,13 +627,17 @@ def create_reference_matcher(elements):
 
      new_list = []
      for entity in roots:
-          new_set = dict.fromkeys([entity.name, get_inflector().pluralize(entity.name), get_inflector().singularize(entity.name)])
+          new_set = dict.fromkeys([
+               entity.name,
+               get_inflector().pluralize(entity.name),
+               get_inflector().singularize(entity.name),
+          ])
           for new_name in new_set:
                new_list.append((new_name, entity))
      return ReferenceMatcher(new_list)
 
 
-class ReferenceMatcher():
+class ReferenceMatcher:
      """Decide se um nome de campo provavelmente referencia uma entidade raiz.
 
      Porte de ``ReferenceMatcher<T>``/``DefaultReferenceMatcher<T>``
@@ -617,13 +645,13 @@ class ReferenceMatcher():
      Guarda estado real (a lista de regex já montada) — por isso é classe,
      ao contrário de ``set_optional_properties``/``sort_structural_variations``.
      """
-     
+
      #: Afixos que sugerem referência (``DefaultReferenceMatcher.java:20-21``).
-     affixes = ["id", "ptr", "ref", "ids", "refs", "has", ""]
+     affixes: ClassVar[list[str]] = ["id", "ptr", "ref", "ids", "refs", "has", ""]
      #: Separadores possíveis entre nome e afixo (``:23-24``).
-     stop_chars = ["_", ".", "-", ""]
+     stop_chars: ClassVar[list[str]] = ["_", ".", "-", ""]
      #: Palavras que tornam improvável ser referência (``:27``).
-     unlikely_words = ["count"]
+     unlikely_words: ClassVar[list[str]] = ["count"]
 
      def __init__(self, pairs):
           """Montar a lista de padrões regex → entidade.
@@ -660,7 +688,7 @@ class ReferenceMatcher():
                          if stop != "" or affix != "":
                               self.id_regexps.append((f"^.*?{name}{stop}{affix}$".lower(), entity))
                               self.id_regexps.append((f"^.*?{affix}{stop}{name}$".lower(), entity))
-                         
+
 
      def maybe_match(self,field_id):
           """Achar a entidade que ``field_id`` provavelmente referencia.
@@ -688,6 +716,10 @@ class ReferenceMatcher():
           (``:62``) vira ``next(gerador, None)``, mesmo padrão já usado em
           ``_infer_object``/etc.
           """
-          if any(word in field_id.lower() for word in self.unlikely_words):
+          lowered = field_id.lower()
+          if any(word in lowered for word in self.unlikely_words):
                return None
-          return next((entity for pattern, entity in self.id_regexps if re.fullmatch(pattern, field_id.lower())), None)
+          return next(
+               (entity for pattern, entity in self.id_regexps if re.fullmatch(pattern, lowered)),
+               None,
+          )
