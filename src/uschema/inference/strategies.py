@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import functools
 import re
-from collections.abc import Iterable
+from typing import ClassVar
 
 from pyecore.ecore import EObject
 
@@ -59,545 +59,679 @@ def join_aggregated_entities(
     raw_entities: dict[str, list[SchemaComponent]],
     inner_schema_names: set[str],
 ) -> None:
-    """Unir entidades internas que são só um alias com "hint word" de outra.
+    """Unir entidades cujo nome é uma variação com "hint word" de agregação.
 
-    Porte de `DefaultAliasedAggregatedEntityJoiner.joinAggregatedEntities`
-    (`:17-37`). Muta `raw_entities` **no lugar** — mesma assinatura `void` do
-    original; é a mesma convenção que `ObjectSC.add`/`ArraySC.add` já usam em
-    `raw.py`, não uma exceção ao "funções puras" do CLAUDE.md.
+    Porte de ``DefaultAliasedAggregatedEntityJoiner.joinAggregatedEntities``
+    (``:17-37``). Roda **antes** de ``inner_count_and_time_stamps_adjust`` —
+    Fase 1.3a, nível raw.
 
     Parameters
     ----------
-    raw_entities : dict of str to list of SchemaComponent
-        Mapa entidade → variações, construído (e mutado) pelo `infer`. As
-        listas contêm sempre `ObjectSC` — nunca outra folha; o tipo da
-        assinatura é `SchemaComponent` só porque é o tipo do original.
+    raw_entities : dict[str, list[SchemaComponent]]
+        Mapa entidade → variações, mutado no lugar.
     inner_schema_names : set of str
-        Nomes registrados como puramente de aninhamento (ver `infer`, 1.2).
+        Nomes de entidades não-raiz candidatas a "alias agregado" de outra
+        entidade (ex.: ``"hasEmployees"`` de ``"Employee"``).
 
     Notes
     -----
-    **Determinismo em aberto.** `findFirst` no original depende da ordem de
-    iteração de `rawEntities.keySet()` — não verificado ainda que tipo de
-    `Map` o `SchemaInference` usa lá (`HashMap` seria não-determinístico já
-    no Java). `dict` do Python preserva ordem de inserção; isso só bate com o
-    original se a ordem de inserção replicar a ordem que o `Map` java
-    enumera. Registrar/confirmar quando portarmos 1.2.
+    Para cada nome em ``inner_schema_names``, procura a **primeira** entidade
+    existente tal que ``hint + entidade`` ou ``entidade + hint`` bate
+    (case-insensitive) com o nome da entidade interna — mesmo
+    ``.casefold()``/``equalsIgnoreCase`` (``:23``). O comentário do próprio
+    autor original (``:24-26``) admite a limitação de propósito: *"why find
+    first only? ... ignoring everything but the first match could lead us to
+    some bad-named entities"* — replicado sem tentar consertar. Ao achar,
+    renomeia todas as variações da entidade interna (``:30``) e as concatena
+    na lista da entidade encontrada (``:33``), removendo a entrada antiga
+    (``:34``).
     """
     for inner_name in inner_schema_names:
-        match = _find_aliased_entity(raw_entities, inner_name)
-        if match is None:
-            continue
-
-        variations = raw_entities[inner_name]
-        for sc in variations:
-            assert isinstance(sc, ObjectSC), f"variação não-ObjectSC em {inner_name!r}"
-            sc.entity_name = match
-
-        raw_entities[match].extend(variations)
-        del raw_entities[inner_name]
-
-
-def _find_aliased_entity(
-    raw_entities: dict[str, list[SchemaComponent]], inner_name: str
-) -> str | None:
-    """Achar a primeira entidade cujo nome + hint word bate com `inner_name`.
-
-    Replica `findFirst` (`:21-26`) — **só o primeiro match**, mesmo que outras
-    entidades também batessem. É a limitação que o autor original documentou
-    no comentário (`:24-25`): pode deixar entidades "mal nomeadas" pra trás.
-    Deliberado, não corrigir.
-    """
-    for entity in raw_entities:
-        for hint in _AGGREGATE_HINT_WORDS:
-            if (hint + entity).casefold() == inner_name.casefold():
-                return entity
-            if (entity + hint).casefold() == inner_name.casefold():
-                return entity
+        match_key = None
+        for entity in raw_entities:
+            for hint in _AGGREGATE_HINT_WORDS:
+                prefixed = (hint + entity).casefold() == inner_name.casefold()
+                suffixed = (entity + hint).casefold() == inner_name.casefold()
+                if prefixed or suffixed:
+                    match_key = entity
+                    break
+            if match_key is not None:
+                break
+        if match_key is not None:
+            for raw in raw_entities[inner_name]:
+                assert isinstance(raw, ObjectSC)
+                raw.entity_name = match_key
+            raw_entities[match_key].extend(raw_entities[inner_name])
+            raw_entities.pop(inner_name)
     return None
 
 
 def merge_equivalent_evs(raw_entities: dict[str, list[SchemaComponent]]) -> None:
-    """Fundir, por entidade, variações estruturalmente equivalentes.
+    """Fundir variações estruturalmente equivalentes dentro de cada entidade.
 
-    Porte de `DefaultEVariationMerger.mergeEquivalentEVs` (`:14-49`). Mais
-    frouxo que `ObjectSC.__eq__`: não compara `entity_name`/`is_root`, só a
-    forma dos campos (ver `_walk_and_merge`). Muta `raw_entities` no lugar.
+    Porte do método público ``mergeEquivalentEVs(Map<...>)``
+    (``DefaultEVariationMerger.java:14-49``) — Fase 1.3a, nível raw. Roda
+    **depois** de ``inner_count_and_time_stamps_adjust`` (mesma ordem do
+    ``infer``, ver ``schema_inference.py``).
 
     Parameters
     ----------
-    raw_entities : dict of str to list of SchemaComponent
-        Mapa entidade → variações. Mutado: fusões removem elementos das
-        listas e podem alterar `lower_bounds`/`upper_bounds` de `ArraySC`
-        aninhados (via `_homogeneous_arrays_merge`).
+    raw_entities : dict[str, list[SchemaComponent]]
+        Mapa entidade → variações; cada lista é mutada no lugar.
+
+    Notes
+    -----
+    O ``do-while`` externo (``:21-47``, repete enquanto ``listModified``) e
+    o ``do-while`` interno com ``Iterator`` (``:26-46``) colapsam num único
+    ``while(list_modified): ... for idx, to_consider in enumerate(entity):
+    ...`` — como o Java sempre dá ``break`` logo depois de achar um par e
+    nunca reusa o iterador depois, um ``for`` comum com ``break`` reproduz o
+    mesmo comportamento sem precisar de ``Iterator.remove()`` (que não
+    existe em Python); a remoção vira ``entity.pop(idx)``, por índice —
+    nunca ``list.remove(x)``, que buscaria por ``==`` e poderia remover o
+    objeto errado.
+
+    O par candidato é comparado com ``sc is not to_consider`` (``:31``,
+    ``sc != toConsider`` no Java é comparação de **referência**, não
+    ``equals``) — por isso ``is not``, não ``!=``. Ao achar um par que
+    funde (``walk_and_merge``, que aqui já embute o
+    ``mergeEquivalentEVs(SchemaComponent,SchemaComponent)`` privado de
+    ``:52-55``, sem o parâmetro ``id`` morto de ``walkAndMerge``), atualiza
+    referências (``update_references``, ``:34``), combina o metadado **em
+    ``sc``** — o sobrevivente — absorvendo o de ``to_consider`` (``:36``), e
+    remove ``to_consider`` da lista (``:39``).
     """
-    for variations in raw_entities.values():
-        _stabilize(raw_entities, variations)
-
-
-def _stabilize(
-    raw_entities: dict[str, list[SchemaComponent]], variations: list[SchemaComponent]
-) -> None:
-    """Repetir a varredura até nenhuma fusão ocorrer (`do/while` do original).
-
-    Cada fusão reinicia a varredura do começo da lista — mesmo efeito do
-    `Iterator` do Java sendo descartado e recriado a cada `listModified`.
-    """
-    modified = True
-    while modified:
-        modified = False
-        for to_consider in variations:
-            for sc in variations:
-                if sc is not to_consider and _walk_and_merge(to_consider, sc):
-                    _update_references(raw_entities, to_consider, sc)
-
-                    assert isinstance(sc, ObjectSC) and isinstance(to_consider, ObjectSC)
-                    assert sc.meta is not None and to_consider.meta is not None
-                    sc.meta.combine_metadata(to_consider.meta)
-
-                    variations.remove(to_consider)
-                    modified = True
+    for entity in raw_entities.values():
+        list_modified = True
+        while list_modified:
+            match = False
+            list_modified = False
+            for idx, to_consider in enumerate(entity):
+                for sc in entity:
+                    if sc is not to_consider and walk_and_merge(to_consider, sc):
+                        assert isinstance(sc, ObjectSC)
+                        assert isinstance(to_consider, ObjectSC)
+                        update_references(raw_entities, to_consider, sc)
+                        assert sc.meta is not None
+                        assert to_consider.meta is not None
+                        sc.meta.combine_metadata(to_consider.meta)
+                        entity.pop(idx)
+                        list_modified = True
+                        match = True
+                        break
+                if match is True:
                     break
-            if modified:
-                break
 
 
-def _walk_and_merge(to_consider: SchemaComponent, sc: SchemaComponent) -> bool:
-    """Decidir se dois nós são "a mesma variação" pro merger (`:57-70`).
+def walk_and_merge(to_consider: SchemaComponent, sc: SchemaComponent) -> bool:
+    """Testar se duas variações são estruturalmente idênticas (fundíveis).
 
-    Mais frouxo que `__eq__`: não olha `entity_name`. Compara classe, depois
-    despacha por tipo — objeto desce campo a campo, array trata o caso
-    homogêneo à parte, folha cai no `__eq__` normal (sempre `True` pra mesma
-    classe, já que folhas não têm estado).
+    Colapsa as três sobrecargas privadas ``walkAndMerge`` do original
+    (``DefaultEVariationMerger.java:57-118``): a dispatcher genérica
+    (``:57-70``), a de ``ObjectSC`` (``:72-91``) e a de ``ArraySC``
+    (``:93-118``). O parâmetro ``id`` (threading por toda a recursão, nunca
+    lido) é descartado — é morto no original.
+
+    Parameters
+    ----------
+    to_consider : SchemaComponent
+        A variação candidata a ser absorvida.
+    sc : SchemaComponent
+        A variação contra a qual comparar.
+
+    Returns
+    -------
+    bool
+        ``True`` se ``to_consider`` e ``sc`` têm exatamente a mesma
+        estrutura (mesmos tipos, recursivamente).
+
+    Notes
+    -----
+    Classes diferentes já cortam (``:60-61``, ``getClass().equals``). Para
+    ``ObjectSC``, exige mesmo tamanho e os campos **na mesma ordem**, com o
+    mesmo nome par a par (``:74-88``, ``zip`` substitui os dois
+    ``Iterator`` paralelos do Java — mas ``zip`` não detecta tamanhos
+    diferentes por si, daí a guarda de ``size()`` antes). Para ``ArraySC``,
+    precisa da mesma homogeneidade (``:95-96``); se ambos homogêneos,
+    delega a ``homogeneous_arrays_merge`` (``:99-100``); senão, mesma
+    lógica do ``ObjectSC`` mas sem nomes de campo (``:101-117``). Folhas
+    caem no ramo final e comparam por ``==`` (``:69``,
+    ``toConsider.equals(sc)`` — igualdade estrutural das folhas sem estado,
+    ver ``raw.py``).
     """
     if type(to_consider) is not type(sc):
         return False
+    else:
+        if isinstance(to_consider, ObjectSC):
+            assert isinstance(sc, ObjectSC)
+            if to_consider.size() != sc.size():
+                return False
+            pairs = zip(to_consider.inners, sc.inners, strict=True)
+            for (to_key, to_value), (sc_key, sc_value) in pairs:
+                if sc_key == to_key:
+                    if walk_and_merge(to_value, sc_value) is False:
+                        return False
+                else:
+                    return False
+            return True
 
-    if isinstance(to_consider, ObjectSC):
-        assert isinstance(sc, ObjectSC)
-        return _walk_and_merge_object(to_consider, sc)
+        elif isinstance(to_consider, ArraySC):
+            assert isinstance(sc, ArraySC)
+            if to_consider.homogeneous != sc.homogeneous:
+                return False
 
-    if isinstance(to_consider, ArraySC):
-        assert isinstance(sc, ArraySC)
-        return _walk_and_merge_array(to_consider, sc)
+            if to_consider.homogeneous and sc.homogeneous:
+                return homogeneous_arrays_merge(to_consider, sc)
+            else:
+                if to_consider.size() != sc.size():
+                    return False
+                for to_elem, sc_elem in zip(to_consider.inners, sc.inners, strict=True):
+                    if walk_and_merge(to_elem, sc_elem) is False:
+                        return False
 
-    return to_consider == sc
+                return True
 
-
-def _walk_and_merge_object(to_consider: ObjectSC, sc: ObjectSC) -> bool:
-    """Comparar campo a campo, em ordem, só pelo **nome** do campo (`:72-91`)."""
-    if to_consider.size() != sc.size():
-        return False
-
-    for (to_key, to_value), (sc_key, sc_value) in zip(to_consider.inners, sc.inners, strict=True):
-        if to_key != sc_key or not _walk_and_merge(to_value, sc_value):
-            return False
-
-    return True
-
-
-def _walk_and_merge_array(to_consider: ArraySC, sc: ArraySC) -> bool:
-    """Caso homogêneo é especial; caso normal ignora nomes, só posição (`:93-118`)."""
-    if to_consider.homogeneous != sc.homogeneous:
-        return False
-
-    if to_consider.homogeneous and sc.homogeneous:
-        return _homogeneous_arrays_merge(to_consider, sc)
-
-    if to_consider.size() != sc.size():
-        return False
-
-    for to_item, sc_item in zip(to_consider.inners, sc.inners, strict=True):
-        if not _walk_and_merge(to_item, sc_item):
-            return False
-
-    return True
+        elif isinstance(to_consider, SchemaComponent):
+            return to_consider == sc
 
 
-def _homogeneous_arrays_merge(to_consider: ArraySC, sc: ArraySC) -> bool:
-    """Reconciliar dois arrays homogêneos — com efeito colateral em `sc` (`:120-143`).
+def homogeneous_arrays_merge(to_consider: ArraySC, sc: ArraySC) -> bool:
+    """Fundir dois arrays homogêneos, ajustando os limites de ocorrência.
 
-    Não usa `_walk_and_merge` pro elemento representante — usa `==` direto
-    (o `.equals()` do original), mais estrito que o resto do merger. Se um
-    lado está vazio, o outro empresta seu elemento (`sc.add(...)`); os bounds
-    sempre se reconciliam por `min`/`max`, é aqui que `lower_bounds` do
-    `raw.py` deixa de ser sempre `0` (o setter que a docstring de `ArraySC`
-    já menciona como só existindo pra isso).
+    Porte de ``homogeneousArraysMerge``
+    (``DefaultEVariationMerger.java:120-143``).
 
-    **M5** (`bugs_originais.md`): se os dois lados chegarem vazios ao
-    mesmo tempo, `to_consider.inners[0]` estoura `IndexError` — o original
-    (`:132`) tem o mesmo problema, `IndexOutOfBoundsException`, confirmado
-    por execução real do Java. O comentário do autor assume que isso "não
-    pode acontecer" (colapsariam antes), mas outro campo do mesmo par pode
-    reconciliar com sucesso (ex.: cheio x vazio) e o walk alcança um segundo
-    campo vazio nos dois lados. Replicado fielmente, sem guarda — não
-    adicionar `if to_consider.size() == 0: return False` aqui.
+    Parameters
+    ----------
+    to_consider : ArraySC
+        O array candidato a ser absorvido.
+    sc : ArraySC
+        O array sobrevivente, mutado no lugar.
+
+    Returns
+    -------
+    bool
+        ``True`` se os arrays são compatíveis (algum vazio, ou o elemento
+        representativo bate) e a fusão ocorreu.
+
+    Notes
+    -----
+    A condição (``:125-126``) usa ``or`` em curto-circuito: só acessa
+    ``inners[0]`` se **nenhum** dos dois arrays for vazio ali. Isso não
+    evita o bug por completo — se **ambos** forem vazios, a primeira
+    cláusula (``to_consider.size() == 0``) já é ``True`` e entra no bloco;
+    dentro dele, ``if sc.size() == 0: sc.add(to_consider.inners[0])``
+    (``:131-132``) executa mesmo quando ``to_consider`` também está vazio,
+    e ``to_consider.inners[0]`` estoura ``IndexError``/
+    ``IndexOutOfBoundsException`` — replicado de propósito (ver **M5** em
+    ``bugs_originais.md``, não corrigido). Fora esse caso, ajusta
+    ``lower_bounds``/``upper_bounds`` para o mín./máx. entre os dois
+    (``:128,135-137``).
     """
-    if not (to_consider.size() == 0 or sc.size() == 0 or to_consider.inners[0] == sc.inners[0]):
-        return False
+    if to_consider.size() == 0 or sc.size() == 0 or to_consider.inners[0] == sc.inners[0]:
+        lower_bounds = min(to_consider.lower_bounds, sc.lower_bounds)
 
-    lower_bounds = min(to_consider.lower_bounds, sc.lower_bounds)
+        if sc.size() == 0:
+            sc.add(to_consider.inners[0])
 
-    if sc.size() == 0:
-        sc.add(to_consider.inners[0])
+        sc.lower_bounds = lower_bounds
 
-    sc.lower_bounds = lower_bounds
-    sc.upper_bounds = max(to_consider.upper_bounds, sc.upper_bounds)
+        upper_bounds = max(to_consider.upper_bounds, sc.upper_bounds)
+        sc.upper_bounds = upper_bounds
 
-    return True
+        return True
+    return False
 
 
-def _update_references(
+def update_references(
     raw_entities: dict[str, list[SchemaComponent]],
     old: SchemaComponent,
     new: SchemaComponent,
 ) -> None:
-    """Trocar, por **identidade**, toda referência a `old` por `new` (`:145-177`).
+    """Substituir toda referência a ``old`` por ``new``, em todas as entidades.
 
-    Necessário porque `old` está prestes a sair da lista de variações; se
-    algum campo em qualquer outra árvore ainda apontar (pelo mesmo objeto
-    Python, não por igualdade) para `old`, ele ficaria órfão.
-    """
-    for variations in raw_entities.values():
-        for sc in variations:
-            _update_references_in(old, new, sc)
-
-
-def _update_references_in(old: SchemaComponent, new: SchemaComponent, sc: SchemaComponent) -> None:
-    if isinstance(sc, ObjectSC):
-        for i, (name, value) in enumerate(sc.inners):
-            if value is old:
-                sc.inners[i] = (name, new)
-            else:
-                _update_references_in(old, new, value)
-
-    elif isinstance(sc, ArraySC):
-        sc.inners = [new if item is old else item for item in sc.inners]
-        for item in sc.inners:
-            if item is not new:
-                _update_references_in(old, new, item)
-
-
-# ============================================================================
-# 1.3b — nível EMF/PyEcore
-# ============================================================================
-
-
-def set_optional_properties(variations: list[EObject]) -> None:
-    """Marcar `optional` toda `StructuralFeature` ausente de ≥1 variação.
-
-    Porte de `DefaultFeatureAnalyzer.setOptionalProperties` (`:20-40`). Reusa
-    `compare_feature` (Fase 0.3) — é o mesmo `CompareFeature` do original
-    (`DefaultFeatureAnalyzer.java:8,13,17`), não reimplementado aqui.
+    Porte de ``updateReferences(Map<...>, SchemaComponent old,
+    SchemaComponent neew)`` (``DefaultEVariationMerger.java:145-149``) — o
+    ponto de entrada, chamado por ``merge_equivalent_evs`` sempre que uma
+    variação é absorvida por outra.
 
     Parameters
     ----------
-    variations : list of EObject
-        As `StructuralVariation` de uma mesma entidade. Muta cada
-        `StructuralFeature.optional` no lugar; não faz sentido para uma lista
-        vazia (o original também assume `variations.get(0)` sem guarda).
+    raw_entities : dict[str, list[SchemaComponent]]
+        Todas as entidades e variações; percorridas por inteiro.
+    old : SchemaComponent
+        A variação que está sendo removida (``to_consider``, no chamador).
+    new : SchemaComponent
+        A variação sobrevivente que deve substituí-la em todo lugar.
+    """
+    for items in raw_entities.values():
+        for sc in items:
+            update_references_decide(old, new, sc)
+
+
+def update_references_decide(
+    old: SchemaComponent, new: SchemaComponent, sc: SchemaComponent
+) -> None:
+    """Substituir ``old`` por ``new`` dentro de um componente, recursivamente.
+
+    Colapsa três sobrecargas do original: o dispatcher genérico
+    ``updateReferences(SchemaComponent,SchemaComponent,SchemaComponent)``
+    (``:151-158``), e as versões específicas para ``ObjectSC`` (``:160-168``)
+    e ``ArraySC`` (``:170-177``).
+
+    Parameters
+    ----------
+    old : SchemaComponent
+        A variação a substituir.
+    new : SchemaComponent
+        A substituta.
+    sc : SchemaComponent
+        O componente sendo varrido — só ``ObjectSC``/``ArraySC`` têm campos
+        internos a percorrer; folhas não fazem nada (nenhum ``if`` bate).
 
     Notes
     -----
-    `EObject` é `Any` na prática (PyEcore não distribui `py.typed`) — ver o
-    aviso sobre mypy em CLAUDE.md. Cada acesso a campo aqui
-    (`.structuralFeatures`, `.optional`) precisa ser exercitado por teste.
-    """
-    first_variation = variations[0]
-    # `:24-25` — cópia, não a mesma lista (`ArrayList<>().addAll(...)`).
-    common_props: list[EObject] = list(first_variation.structuralFeatures)
-    optional_props: list[EObject] = []
+    ⚠️ Toda comparação aqui é por **identidade**, não igualdade estrutural
+    — no Java, ``p.getValue() == old`` (``:163``) e ``_sc == old``/``_sc !=
+    neew`` (``:172,174``) comparam **referências de objeto**, não
+    ``equals()``. Por isso ``is``/``is not``, nunca ``==``/``!=``: como
+    ``ObjectSC``/``ArraySC`` têm ``__eq__`` estrutural (ver ``raw.py``),
+    usar ``==`` aqui trocaria a variação errada — uma *estruturalmente
+    igual mas distinta* de ``old``.
 
-    # `:30-32` — uma feature de `variations[0]` só é comum se TODAS as outras
-    # variações têm alguma feature própria que `compare_feature` considera a
-    # mesma.
+    Ramo ``ObjectSC`` (``:160-168``): para cada par ``(key, value)``, se
+    ``value`` **é** ``old``, substitui a tupla; senão desce recursivamente
+    em ``value``. Ramo ``ArraySC`` (``:170-177``): primeiro troca todas as
+    ocorrências de ``old`` por ``new`` em ``inners`` (equivalente ao
+    ``replaceAll``), depois desce recursivamente só nos elementos que
+    **não são** ``new`` (evita reprocessar o que acabou de ser trocado,
+    mesma guarda ``_sc != neew`` do Java).
+    """
+    if isinstance(sc, ObjectSC):
+        for idx, (key, value) in enumerate(sc.inners):
+            if value is old:
+                sc.inners[idx] = (key, new)
+            else:
+                update_references_decide(old, new, value)
+
+    if isinstance(sc, ArraySC):
+        sc.inners = [new if item is old else item for item in sc.inners]
+        for item in sc.inners:
+            if item is not new:
+                update_references_decide(old, new, item)
+
+
+class OptionalTagger:
+    """Marca quais campos são opcionais, contando ocorrências entre variações.
+
+    Porte de ``OptionalTagger``/``DefaultOptionalTagger``
+    (``OptionalTagger.java:11-19``, ``DefaultOptionalTagger.java:11-67``) —
+    nível **raw** (opera sobre ``SchemaComponent``, apesar de logicamente
+    pertencer à mesma leva de estratégias EMF da 1.3b — ver nota no docstring
+    do módulo). Tem estado real, acumulado entre chamadas de ``put``,
+    processado por ``calc_optionality`` e consultado por ``is_optional`` —
+    por isso é classe, diferente de ``set_optional_properties``/
+    ``sort_structural_variations``, que não guardam nada entre chamadas.
+    """
+
+    def __init__(self) -> None:
+        """Inicializar os dois dicts de estado vazios.
+
+        Porte do construtor (``DefaultOptionalTagger.java:16-20``): substitui
+        ``mSVByEntity``/``optionalsByEntity`` por dois dicts Python.
+        """
+        self.dict1: dict[str, list[SchemaComponent]] = {}
+        self.dict2: dict[str, dict[tuple[str, SchemaComponent], int]] = {}
+
+    def put(self, entity_type_name: str, schema: SchemaComponent) -> None:
+        """Registrar uma variação (``schema``) na lista da sua entidade.
+
+        Porte de ``put`` (``DefaultOptionalTagger.java:23-32``). Chamado uma
+        vez por variação — quem chama (Fase 1.4) acumula todas as
+        variações de uma entidade com chamadas repetidas antes de
+        ``calc_optionality`` rodar.
+
+        Parameters
+        ----------
+        entity_type_name : str
+             Nome da entidade dona da variação.
+        schema : SchemaComponent
+             A variação (``ObjectSC``) a registrar.
+        """
+        if self.dict1.get(entity_type_name) is not None:
+            self.dict1[entity_type_name].append(schema)
+        else:
+            new_list = []
+            new_list.append(schema)
+            self.dict1[entity_type_name] = new_list
+
+    def calc_optionality(self) -> None:
+        """Calcular, por entidade, quais pares campo/componente são opcionais.
+
+        Porte de ``calcOptionality`` (``DefaultOptionalTagger.java:35-60``).
+
+        Notes
+        -----
+        O ``return;`` do Java (``:46``) está dentro de uma lambda chamada uma
+        vez por entidade (``forEach``) — ali ele só pula o processamento
+        *daquela* entidade. Aqui, com um ``for`` de verdade, o equivalente é
+        ``continue``, não ``return`` (que sairia da função inteira). O
+        registro do dict vazio em ``self.dict2`` (``:40``) acontece **antes**
+        da checagem de ``num_variations == 1`` — mesmo quando pulamos o
+        resto, a entidade já tem uma entrada (vazia) em ``self.dict2``.
+
+        A contagem (``:48-56``, ``flatMap`` + ``reduce``) vira o duplo
+        ``for`` (variações → campos de cada variação) com o padrão
+        get-ou-default-e-soma (``new_dict.get(field, 0) + 1``). O filtro
+        final (``:58``, ``removeIf``) vira uma dict comprehension mantendo
+        só os pares cuja contagem é **diferente** do total de variações —
+        os que não apareceram em todas.
+        """
+        for entity in self.dict1:
+            variations = self.dict1[entity]
+            new_dict: dict[tuple[str, SchemaComponent], int] = {}
+            self.dict2[entity] = new_dict
+            num_variations = len(variations)
+
+            if num_variations == 1:
+                continue
+            else:
+                for var in variations:
+                    assert isinstance(var, ObjectSC)
+                    for field in var.inners:
+                        new_dict[field] = new_dict.get(field, 0) + 1
+                self.dict2[entity] = {
+                    field: t for field, t in new_dict.items() if t != num_variations
+                }
+
+    def is_optional(self, entity_name: str, sc: tuple[str, SchemaComponent]) -> bool:
+        """Dizer se um par campo/componente é opcional para uma entidade.
+
+        Porte de ``isOptional`` (``DefaultOptionalTagger.java:62-66``);
+        ``containsKey`` vira o operador ``in`` do Python.
+        """
+        return sc in self.dict2[entity_name]
+
+
+class NullOptionalTagger:
+    """Versão no-op de :class:`OptionalTagger` — não marca nada como opcional.
+
+    Porte de ``NullOptionalTagger`` (``NullOptionalTagger.java:14-34``).
+    """
+
+    def put(self, entity_type_name: str, schema: SchemaComponent) -> None:
+        """Não fazer nada (``NullOptionalTagger.java:20-22``)."""
+        return None
+
+    def calc_optionality(self) -> None:
+        """Não fazer nada (``NullOptionalTagger.java:24-27``)."""
+        return None
+
+    def is_optional(self, entity_name: str, sc: tuple[str, SchemaComponent]) -> bool:
+        """Sempre dizer que não é opcional (``NullOptionalTagger.java:29-33``)."""
+        return False
+
+
+def reorder_variation_ids(vars: list[EObject]) -> None:
+    """Renumerar ``variation_id`` de 1 a N, na ordem atual da lista.
+
+    Porte de ``reorderVariationIds``
+    (``DefaultStructuralVariationSorter.java:50-54``). O iterador manual de
+    inteiros do Java (``IntStream.range(1, n+1).iterator()`` + ``it.next()``
+    a cada elemento) vira ``enumerate(vars, start=1)``, que já pareia índice
+    e elemento de uma vez.
+    """
+    for num, var in enumerate(vars, start=1):
+        var.variationId = num
+
+
+def sorting_key(var1: EObject, var2: EObject) -> int:
+    return -1 if var1.firstTimestamp < var2.firstTimestamp else 1
+
+
+def sort_by_first_timestamp(vars: list[EObject]) -> None:
+    """Ordenar por ``firstTimestamp`` crescente e renumerar.
+
+    Porte de ``sortByFirstTimestamp``
+    (``DefaultStructuralVariationSorter.java:26-30``). O comparador Java
+    (``var1.getFirstTimestamp() < var2.getFirstTimestamp() ? -1 : 1``) nunca
+    devolve "empate" — em caso de igualdade, cai no ``1`` (assimetria
+    proposital do original, replicada aqui via ``functools.cmp_to_key`` em
+    vez de um ``key=`` comum, que trataria empates de forma diferente).
+    """
+    vars.sort(key=functools.cmp_to_key(sorting_key))
+    reorder_variation_ids(vars)
+
+
+def sorting_key2(var1: EObject, var2: EObject) -> int:
+    return -1 if var1.lastTimestamp < var2.lastTimestamp else 1
+
+
+def sort_by_last_timestamp(vars: list[EObject]) -> None:
+    """Ordenar por ``lastTimestamp`` crescente e renumerar.
+
+    Porte de ``sortByLastTimestamp``
+    (``DefaultStructuralVariationSorter.java:32-36``); mesma lógica de
+    :func:`sort_by_first_timestamp`, trocando o campo comparado.
+    """
+    vars.sort(key=functools.cmp_to_key(sorting_key2))
+    reorder_variation_ids(vars)
+
+
+def sort_by_count(vars: list[EObject]) -> None:
+    """Só renumerar — **não ordena de verdade**.
+
+    Porte de ``sortByCount`` (``DefaultStructuralVariationSorter.java:38-42``).
+    No original, a linha de ordenação está **comentada**
+    (``//ECollections.sort(...)``) — só ``reorderVariationIds`` roda. É uma
+    incompletude do original, replicada fielmente, não corrigida.
+    """
+    reorder_variation_ids(vars)
+
+
+def sorting_key3(var1: EObject, var2: EObject) -> int:
+    return -1 if len(var1.features) < len(var2.features) else 1
+
+
+def sort_by_property_number(vars: list[EObject]) -> None:
+    """Ordenar pelo número de features (``len(features)``) e renumerar.
+
+    Porte de ``sortByPropertyNumber``
+    (``DefaultStructuralVariationSorter.java:44-48``).
+    """
+    vars.sort(key=functools.cmp_to_key(sorting_key3))
+    reorder_variation_ids(vars)
+
+
+def sort_structural_variations(vars: list[EObject]) -> None:
+    """Escolher o critério de ordenação e aplicá-lo, em cascata.
+
+    Porte de ``sort`` (``DefaultStructuralVariationSorter.java:14-24``), o
+    método público de ``DefaultStructuralVariationSorter``. Prioridade:
+    ``firstTimestamp`` preenchido em alguma variação → ``lastTimestamp`` →
+    ``count`` → número de propriedades (fallback, sempre disponível).
+    """
+    if any(var.firstTimestamp != 0 for var in vars):
+        sort_by_first_timestamp(vars)
+
+    elif any(var.lastTimestamp != 0 for var in vars):
+        sort_by_last_timestamp(vars)
+
+    elif any(var.count != 0 for var in vars):
+        sort_by_count(vars)
+    else:
+        sort_by_property_number(vars)
+
+
+def null_sort_structural_variations(vars: list[EObject]) -> None:
+    """Não fazer nada (porte de ``NullStructuralVariationSorter.java:9-12``)."""
+    return None
+
+
+def set_optional_properties(variations: list[EObject]) -> None:
+    """Marcar, em cada variação, quais features não são comuns a todas.
+
+    Porte de ``setOptionalProperties``
+    (``DefaultFeatureAnalyzer.java:21-40``). Sem estado próprio — o
+    ``comparer`` do Java (``:13,17``) é só um ``CompareFeature()``, que aqui
+    já existe pronto como a função importada ``compare_feature``.
+
+    Parameters
+    ----------
+    variations : list of StructuralVariation
+         As variações estruturais (EMF) de uma mesma entidade.
+
+    Notes
+    -----
+    Três fases: (1) semeia candidatos a partir das features da variação 0
+    (``:24-25``); (2) para cada candidato, checa se **todas** as variações
+    têm alguma feature equivalente — a própria variação 0 passa
+    automaticamente via ``var is variations[0]`` (``:31``, comparação de
+    **referência**, mesmo cuidado ``is``/``==`` de sempre) — e separa os que
+    não são comuns em ``optional_props``, removendo-os no final
+    (``:27,30-32,35``); (3) para cada feature de cada variação, marca
+    ``optional`` como "não bate com nenhuma das comuns" (``:38-39``,
+    ``noneMatch`` vira ``not any(...)``).
+    """
+    common_props = list(variations[0].structuralFeatures)
+    optional_props = []
     for prop in common_props:
         is_common = all(
-            var is first_variation
-            or any(compare_feature(prop, sf) for sf in var.structuralFeatures)
+            var is variations[0] or any(compare_feature(prop, sf) for sf in var.structuralFeatures)
             for var in variations
         )
         if not is_common:
             optional_props.append(prop)
-
-    for prop in optional_props:
-        common_props.remove(prop)
-
-    # `:38-39` — toda feature de toda variação: opcional se não bate com
-    # nenhuma das comuns.
+    common_props = [prop for prop in common_props if prop not in optional_props]
     for var in variations:
-        for sf in var.structuralFeatures:
-            sf.optional = not any(compare_feature(sf, common) for common in common_props)
+        for feat in var.structuralFeatures:
+            feat.optional = not any(compare_feature(feat, comm_prop) for comm_prop in common_props)
 
 
-# Affixes/StopChars/UnlikelyWords (DefaultReferenceMatcher.java:20-27).
-_REFERENCE_AFFIXES = ("id", "ptr", "ref", "ids", "refs", "has", "")
-_REFERENCE_STOP_CHARS = ("_", ".", "-", "")
-_REFERENCE_UNLIKELY_WORDS = ("count",)
+def create_reference_matcher(elements: list[EObject]) -> ReferenceMatcher:
+    """Montar um :class:`ReferenceMatcher` a partir das entidades raiz.
 
-
-class ReferenceMatcher:
-    """Decide se um nome de campo é referência a alguma entidade indexada.
-
-    Porte de `DefaultReferenceMatcher` (`:17-64`). Sem `Default`/`Null*` no
-    nome — só há uma implementação no original, mesma razão do Joiner/Merger
-    da 1.3a. Vira classe (não função) porque carrega estado real: a lista de
-    regex compilados, montada uma vez no construtor.
+    Porte de ``createReferenceMatcher``
+    (``DefaultReferenceMatcherCreator.java:20-30``) — colapsa a interface de
+    um método só (``ReferenceMatcherCreator``, ``ReferenceMatcherCreator.java:12-14``)
+    numa função, sem estado.
 
     Parameters
     ----------
-    pairs : iterable of (str, EObject)
-        Pares (nome candidato, entidade) — normalmente as três variantes
-        (singular/plural/como está) de cada entidade raiz, ver
-        :func:`create_reference_matcher`.
-
-    Notes
-    -----
-    O autor original comentou a própria lentidão (`:29-32`, "By using a list
-    this matcher is just too slow") e manteve assim. Replicado como está —
-    não é escopo do porte otimizar o que o original também não otimizou.
-
-    **M6** (`bugs_originais.md`): `key` entra crua na string do regex, sem
-    `re.escape`. O original faz o mesmo (`entry.getKey()` concatenado direto
-    em `DefaultReferenceMatcher.java:34-50`, confirmado por execução real) —
-    um metacaractere de regex em `key` (`.`, `+`, `(`, `[`, …) é interpretado
-    como regex, não como literal. Não escapar aqui: escapar divergiria do
-    oráculo para nomes de entidade que contenham esses caracteres.
-    """
-
-    def __init__(self, pairs: Iterable[tuple[str, EObject]]) -> None:
-        patterns: list[tuple[re.Pattern[str], EObject]] = []
-
-        for key, value in pairs:
-            for affix in _REFERENCE_AFFIXES:
-                # `:42-43` — prefixo, chave antes do afixo.
-                for c in _REFERENCE_STOP_CHARS:
-                    patterns.append((re.compile(f"^{key}{c}{affix}.*$".lower()), value))
-                # `:44-45` — prefixo, afixo antes da chave.
-                for c in _REFERENCE_STOP_CHARS:
-                    patterns.append((re.compile(f"^{affix}{c}{key}.*$".lower()), value))
-                # `:47-48` — sufixo, chave antes do afixo. Filtra c="" e
-                # afixo="" juntos (padrão `.*?key$` sem afixo nenhum já sai
-                # coberto, de outra forma, pelo prefixo acima).
-                for c in _REFERENCE_STOP_CHARS:
-                    if c or affix:
-                        patterns.append((re.compile(f"^.*?{key}{c}{affix}$".lower()), value))
-                # `:49-50` — sufixo, afixo antes da chave.
-                for c in _REFERENCE_STOP_CHARS:
-                    if c or affix:
-                        patterns.append((re.compile(f"^.*?{affix}{c}{key}$".lower()), value))
-
-        self._patterns = patterns
-
-    def maybe_match(self, field_id: str) -> EObject | None:
-        """Achar a primeira entidade cujo padrão bate com `field_id`.
-
-        Porte de `maybeMatch` (`:56-63`).
-
-        Parameters
-        ----------
-        field_id : str
-            Nome do campo a testar (ex.: ``"customerId"``).
-
-        Returns
-        -------
-        EObject or None
-            A entidade casada, ou `None` se `field_id` contém uma palavra de
-            `_REFERENCE_UNLIKELY_WORDS` ou nenhum padrão bate.
-        """
-        lowered = field_id.lower()
-
-        if any(word in lowered for word in _REFERENCE_UNLIKELY_WORDS):
-            return None
-
-        for pattern, value in self._patterns:
-            if pattern.match(lowered):
-                return value
-
-        return None
-
-
-def create_reference_matcher(entities: Iterable[EObject]) -> ReferenceMatcher:
-    """Construir o `ReferenceMatcher` a partir das entidades **raiz**.
-
-    Porte de `DefaultReferenceMatcherCreator.createReferenceMatcher`
-    (`:20-30`). Só entidades com ao menos uma variação raiz são
-    referenciáveis (`:22`, `EntityType::isRoot`).
-
-    Parameters
-    ----------
-    entities : iterable of EObject
-        Todas as `EntityType` do modelo (raiz e não-raiz).
+    elements : list of EntityType
+         Todas as entidades do modelo (raiz e não-raiz).
 
     Returns
     -------
     ReferenceMatcher
-        Indexado por `{nome, plural(nome), singular(nome)}` de cada entidade
-        raiz.
+         Pronto para checar nomes de campo via ``maybe_match``.
 
     Notes
     -----
-    O original usa `HashSet<String>` pras três variantes (`:24-27`) — a
-    ordem de iteração de um `HashSet` real não é a de inserção, mas é
-    determinística *dentro* de uma mesma execução (o hash de `String` no Java
-    é uma função pura). Um `set()` do Python, em contraste, varia **entre**
-    processos por causa do `PYTHONHASHSEED` (proteção de segurança) — seria
-    *menos* determinístico que o original, não mais fiel a ele. Por isso o
-    porte usa `dict.fromkeys(...)` (dedup preservando ordem de inserção,
-    garantido pela linguagem): não é literal ao `HashSet`, mas é a única
-    escolha que dá determinismo reproduzível — o mesmo raciocínio já aplicado
-    ao `findFirst` do Joiner (1.3a, ver docstring de `join_aggregated_entities`).
+    Filtra só as raízes (``:22``, ``EntityType::isRoot`` → ``entity.root``).
+    Para cada uma, monta um conjunto (``:24-28``) com 3 variações do nome —
+    original, plural, singular — que colapsam se coincidirem (é um ``set``,
+    não lista). Achata (``:29``) em pares ``(nome_variante, entidade)``, um
+    por variação de nome, e passa pro construtor de ``ReferenceMatcher``.
     """
-    inflector = get_inflector()
-    pairs: list[tuple[str, EObject]] = []
+    roots = [entity for entity in elements if entity.root]
 
-    for entity in entities:
-        if not entity.root:
-            continue
-
-        name = entity.name
-        variants = dict.fromkeys([name, inflector.pluralize(name), inflector.singularize(name)])
-
-        for variant in variants:
-            assert variant is not None
-            pairs.append((variant, entity))
-
-    return ReferenceMatcher(pairs)
-
-
-def sort_structural_variations(variations: list[EObject]) -> None:
-    """Ordenar as variações de uma entidade — em cascata, deterministicamente.
-
-    Porte de `DefaultStructuralVariationSorter.sort` (`:13-24`): por
-    `firstTimestamp` se alguma variação tiver um não-zero; senão por
-    `lastTimestamp`; senão por `count`; senão pelo número de propriedades.
-    Muta `variations` no lugar e renumera `variationId` a partir de 1.
-
-    Parameters
-    ----------
-    variations : list of EObject
-        As `StructuralVariation` de uma entidade.
-
-    Notes
-    -----
-    **M3** (`bugs_originais.md`): o ramo `sortByCount` **não ordena** — o
-    `ECollections.sort` está comentado no original (`:40`); só renumera
-    `variationId`, deixando a ordem de inserção. Replicado como está.
-
-    **M4** (`bugs_originais.md`): os comparadores devolvem só `-1`/`1`,
-    nunca `0` (`:28,34,46`) — não são uma ordem total; dois elementos "iguais"
-    (mesmo timestamp/count/nº de propriedades) sempre se afirmam maiores um
-    que o outro. `functools.cmp_to_key` replica esse comparador tal como é,
-    inclusive esse defeito — a ordem resultante entre iguais fica a critério
-    do algoritmo de ordenação (Timsort é estável, mas o comparador não é
-    consistente, então "estável" não garante nada aqui). Fixar a ordem
-    observada em teste.
-    """
-    if any(v.firstTimestamp != 0 for v in variations):
-        variations.sort(key=functools.cmp_to_key(_compare_by_first_timestamp))
-    elif any(v.lastTimestamp != 0 for v in variations):
-        variations.sort(key=functools.cmp_to_key(_compare_by_last_timestamp))
-    elif any(v.count != 0 for v in variations):
-        pass  # M3 — sortByCount não ordena no original; só renumera abaixo.
-    else:
-        variations.sort(key=functools.cmp_to_key(_compare_by_property_number))
-
-    _reorder_variation_ids(variations)
+    new_list = []
+    for entity in roots:
+        new_set = dict.fromkeys(
+            [
+                entity.name,
+                get_inflector().pluralize(entity.name),
+                get_inflector().singularize(entity.name),
+            ]
+        )
+        for new_name in new_set:
+            new_list.append((new_name, entity))
+    return ReferenceMatcher(new_list)
 
 
-def _compare_by_first_timestamp(a: EObject, b: EObject) -> int:
-    """`:28` — `-1`/`1`, nunca `0` (M4, ver `sort_structural_variations`)."""
-    return -1 if a.firstTimestamp < b.firstTimestamp else 1
+class ReferenceMatcher:
+    """Decide se um nome de campo provavelmente referencia uma entidade raiz.
 
-
-def _compare_by_last_timestamp(a: EObject, b: EObject) -> int:
-    """`:34` — mesma forma do M4."""
-    return -1 if a.lastTimestamp < b.lastTimestamp else 1
-
-
-def _compare_by_property_number(a: EObject, b: EObject) -> int:
-    """`:46` — mesma forma do M4; compara nº de `features`, não `structuralFeatures`."""
-    return -1 if len(a.features) < len(b.features) else 1
-
-
-def _reorder_variation_ids(variations: list[EObject]) -> None:
-    """`:50-54` — renumerar `variationId` a partir de 1, na ordem atual."""
-    for i, variation in enumerate(variations, start=1):
-        variation.variationId = i
-
-
-def null_sort_structural_variations(variations: list[EObject]) -> None:
-    """Não fazer nada — porte de `NullStructuralVariationSorter.sort` (`:9-12`)."""
-
-
-class OptionalTagger:
-    """Acumula variações por entidade e calcula quais campos são opcionais.
-
-    Porte de `DefaultOptionalTagger` (`:11-67`). Vira classe (diferente do
-    Joiner/Merger da 1.3a): há estado real acumulado por várias chamadas de
-    `put`, processado uma vez em `calc_optionality`, consultado depois por
-    `is_optional`.
-
-    Notes
-    -----
-    **Código morto no pipeline.** No `USchemaModelBuilder`, só `put()` é
-    chamado de verdade; `calc_optionality()` e `is_optional()` nunca são
-    invocados — estão comentados no original com `// TODO: Remove until
-    recode` (quem realmente marca opcionalidade é `FeatureAnalyzer`, ver
-    `set_optional_properties`). Portado por completo mesmo assim (fiel e
-    completo, mesma decisão do `camelCase`/`underscore` do Inflector na 0.6),
-    mas **não** cobrir com teste de equivalência contra o oráculo — não há
-    saída observável que dependa disso.
+    Porte de ``ReferenceMatcher<T>``/``DefaultReferenceMatcher<T>``
+    (``ReferenceMatcher.java:5-7``, ``DefaultReferenceMatcher.java:17-64``).
+    Guarda estado real (a lista de regex já montada) — por isso é classe,
+    ao contrário de ``set_optional_properties``/``sort_structural_variations``.
     """
 
-    def __init__(self) -> None:
-        self._variations_by_entity: dict[str, list[SchemaComponent]] = {}
-        self._optionals_by_entity: dict[str, dict[tuple[str, SchemaComponent], int]] = {}
+    #: Afixos que sugerem referência (``DefaultReferenceMatcher.java:20-21``).
+    affixes: ClassVar[list[str]] = ["id", "ptr", "ref", "ids", "refs", "has", ""]
+    #: Separadores possíveis entre nome e afixo (``:23-24``).
+    stop_chars: ClassVar[list[str]] = ["_", ".", "-", ""]
+    #: Palavras que tornam improvável ser referência (``:27``).
+    unlikely_words: ClassVar[list[str]] = ["count"]
 
-    def put(self, entity_type_name: str, schema: SchemaComponent) -> None:
-        """`:23-32` — anexar `schema` à lista da entidade, criando-a se nova."""
-        self._variations_by_entity.setdefault(entity_type_name, []).append(schema)
+    def __init__(self, pairs: list[tuple[str, EObject]]) -> None:
+        """Montar a lista de padrões regex → entidade.
 
-    def calc_optionality(self) -> None:
-        """`:35-59` — contar, por entidade, quantas variações têm cada campo.
+        Porte do construtor (``DefaultReferenceMatcher.java:35-54``).
 
-        Um campo `(nome, componente)` que aparece em **todas** as variações
-        da entidade é removido da contagem (não é opcional); o que sobra em
-        `_optionals_by_entity[entidade]` são os campos vistos em algumas, não
-        todas — os opcionais.
+        Parameters
+        ----------
+        pairs : list of tuple of (str, EntityType)
+             Pares ``(nome_variante, entidade)``, vindos de
+             :func:`create_reference_matcher`.
+
+        Notes
+        -----
+        Pra cada par, pra cada afixo, pra cada separador, gera até 4
+        padrões: dois "prefixo" (nome-antes-do-afixo e afixo-antes-do-nome,
+        ambos incondicionais) e dois "sufixo" (mesma coisa, mas só quando
+        **não** é o caso de separador **e** afixo serem os dois vazios ao
+        mesmo tempo — senão o padrão viraria ``^.*?$``, que bate com
+        qualquer string). O Java monta isso com 4 blocos de stream
+        concatenados (``Stream.concat`` aninhado, ``:40-51``); aqui os 4
+        nascem juntos, dentro do mesmo laço de separador — reorganização
+        segura, porque todos os 4 desse laço apontam pra mesma entidade, e
+        a ordem entre eles não afeta qual entidade ``maybe_match`` acha
+        primeiro (só a ordem entre pares/afixos diferentes afetaria isso, e
+        essa continua igual ao Java).
         """
-        for entity_name, schemas in self._variations_by_entity.items():
-            feat_count: dict[tuple[str, SchemaComponent], int] = {}
-            self._optionals_by_entity[entity_name] = feat_count
+        self.id_regexps = []
+        for name, entity in pairs:
+            for affix in self.affixes:
+                for stop in self.stop_chars:
+                    self.id_regexps.append((f"^{name}{stop}{affix}.*$".lower(), entity))
+                    self.id_regexps.append((f"^{affix}{stop}{name}.*$".lower(), entity))
+                    if stop != "" or affix != "":
+                        self.id_regexps.append((f"^.*?{name}{stop}{affix}$".lower(), entity))
+                        self.id_regexps.append((f"^.*?{affix}{stop}{name}$".lower(), entity))
 
-            # `:44-46` — uma só variação: nada pode ser opcional.
-            if len(schemas) == 1:
-                continue
+    def maybe_match(self, field_id: str) -> EObject | None:
+        """Achar a entidade que ``field_id`` provavelmente referencia.
 
-            for sc in schemas:
-                assert isinstance(sc, ObjectSC)
-                for pair in sc.inners:
-                    feat_count[pair] = feat_count.get(pair, 0) + 1
+        Porte de ``maybeMatch`` (``DefaultReferenceMatcher.java:57-63``).
 
-            num_variations = len(schemas)
-            for pair in list(feat_count):
-                if feat_count[pair] == num_variations:
-                    del feat_count[pair]
+        Parameters
+        ----------
+        field_id : str
+             Nome do campo a testar.
 
-    def is_optional(self, entity_name: str, pair: tuple[str, SchemaComponent]) -> bool:
-        """`:63-66` — `True` se `pair` sobreviveu à filtragem de `calc_optionality`."""
-        return pair in self._optionals_by_entity[entity_name]
+        Returns
+        -------
+        EntityType or None
+             A entidade encontrada, ou ``None`` se nada bateu (substitui o
+             ``Optional`` do Java).
 
-
-class NullOptionalTagger:
-    """No-op — porte de `NullOptionalTagger` (`:14-34`)."""
-
-    def put(self, entity_type_name: str, schema: SchemaComponent) -> None:
-        """`:20` — não faz nada."""
-
-    def calc_optionality(self) -> None:
-        """`:24` — não faz nada."""
-
-    def is_optional(self, entity_name: str, pair: tuple[str, SchemaComponent]) -> bool:
-        """`:28-30` — sempre `False`."""
-        return False
+        Notes
+        -----
+        Primeiro rejeita nomes que contêm alguma ``unlikely_words``
+        (``:59-60``). Senão, procura o **primeiro** padrão que bate com
+        ``field_id`` **por inteiro** — ``String.matches()`` do Java exige
+        casar a string inteira, não só uma parte, por isso ``re.fullmatch``
+        e não ``re.match``/``re.search``. ``findFirst().map(...)``
+        (``:62``) vira ``next(gerador, None)``, mesmo padrão já usado em
+        ``_infer_object``/etc.
+        """
+        lowered = field_id.lower()
+        if any(word in lowered for word in self.unlikely_words):
+            return None
+        return next(
+            (entity for pattern, entity in self.id_regexps if re.fullmatch(pattern, lowered)),
+            None,
+        )
