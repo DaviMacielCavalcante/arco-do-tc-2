@@ -21,11 +21,37 @@ já existente (abaixo, em :meth:`SchemaInference._infer_object`), o original
 nova — ``count`` **e** timestamps, não só bounds de array — é descartado.
 Este módulo replica isso fielmente: **não** chama ``combine_metadata`` neste
 ponto, de propósito.
+
+Ordem de ``inner_schema_names``
+-------------------------------
+``innerSchemaNames`` é um ``HashSet<String>`` no original
+(``SchemaInference.java:56,67``), iterado em ``innerCountAndTimestampsAdjust``
+(``:100``). Essa iteração **não é comutativa**: quando uma entidade interna
+contém outra, quem roda primeiro combina ``meta`` ainda zerado da outra, e o
+``count`` final depende da ordem.
+
+O porte usa ``dict[str, None]`` (ordered-set), **não** ``set[str]``. Um
+``HashSet`` do Java tem ordem de bucket estável — o ``hashCode`` de ``String``
+é função pura, igual em toda execução. Um ``set`` do Python **não**: a ordem
+varia entre processos por causa do ``PYTHONHASHSEED``, que randomiza o hash de
+``str`` por segurança. Medido no User Profiles (Rota A): sob sementes 0..7 o
+``count`` de ``Movie_id`` alternava entre ``0`` e o do documento-raiz sobre a
+mesma entrada — o porte era *menos* determinístico que o original, não mais
+fiel a ele. Pela ordem de inserção (o filho entra antes do pai, porque
+``_infer_object`` registra a entidade depois de descer nos campos) o valor é
+``0``, que é o do XMI-oráculo.
+
+É o mesmo raciocínio já aplicado em
+:func:`~uschema.inference.strategies.create_reference_matcher` (1.3b), que
+trocou ``HashSet`` por ``dict.fromkeys`` por este motivo exato: onde o original
+depende de uma ordem de hash que o Python não reproduz, o porte escolhe a única
+ordem reproduzível que existe. Não trocar de volta por ``set`` "porque o Java é
+``Set``" — o tipo casa, o comportamento não.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from uschema.extractors.triple import JsonKind, SchemaTriple, classify
@@ -53,7 +79,7 @@ _IGNORED_ATTRIBUTES: frozenset[str] = frozenset({"_type"})
 #: `DefaultSchemaInferenceConfig.java:20`.
 _TYPE_MARKER_ATTRIBUTE = "_type"
 
-_Joiner = Callable[[dict[str, list[SchemaComponent]], set[str]], None]
+_Joiner = Callable[[dict[str, list[SchemaComponent]], Iterable[str]], None]
 _Merger = Callable[[dict[str, list[SchemaComponent]]], None]
 
 
@@ -114,7 +140,9 @@ class SchemaInference:
 
         # SchemaInference():65-67 — inicializados uma vez, não a cada infer().
         self._raw_entities: dict[str, list[SchemaComponent]] = {}
-        self._inner_schema_names: set[str] = set()
+        # `dict[str, None]`, não `set[str]`: ordered-set. Ver "Ordem de
+        # `inner_schema_names`" na docstring do módulo.
+        self._inner_schema_names: dict[str, None] = {}
 
     def infer(self, triples: list[SchemaTriple]) -> dict[str, list[SchemaComponent]]:
         """Inferir as árvores raw por entidade a partir das triplas.
@@ -268,7 +296,7 @@ class SchemaInference:
             # `:223-224` — só entra em innerSchemaNames quando a entidade é
             # nova (este ramo), e só se não-raiz.
             if not is_root:
-                self._inner_schema_names.add(entity_name)
+                self._inner_schema_names[entity_name] = None
 
         return ret_schema
 

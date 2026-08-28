@@ -57,7 +57,7 @@ _AGGREGATE_HINT_WORDS = (
 
 def join_aggregated_entities(
     raw_entities: dict[str, list[SchemaComponent]],
-    inner_schema_names: set[str],
+    inner_schema_names: Iterable[str],
 ) -> None:
     """Unir entidades internas que são só um alias com "hint word" de outra.
 
@@ -72,17 +72,33 @@ def join_aggregated_entities(
         Mapa entidade → variações, construído (e mutado) pelo `infer`. As
         listas contêm sempre `ObjectSC` — nunca outra folha; o tipo da
         assinatura é `SchemaComponent` só porque é o tipo do original.
-    inner_schema_names : set of str
+    inner_schema_names : iterable of str
         Nomes registrados como puramente de aninhamento (ver `infer`, 1.2).
+        `Iterable`, não `set`: quem chama passa um `dict[str, None]`
+        (ordered-set) — ver "Ordem de `inner_schema_names`" na docstring de
+        `schema_inference`.
 
     Notes
     -----
-    **Determinismo em aberto.** `findFirst` no original depende da ordem de
-    iteração de `rawEntities.keySet()` — não verificado ainda que tipo de
-    `Map` o `SchemaInference` usa lá (`HashMap` seria não-determinístico já
-    no Java). `dict` do Python preserva ordem de inserção; isso só bate com o
-    original se a ordem de inserção replicar a ordem que o `Map` java
-    enumera. Registrar/confirmar quando portarmos 1.2.
+    **Duas ordens decidem o resultado aqui, e nenhuma é comutativa.**
+
+    1. A de `inner_schema_names`, iterada abaixo. O laço **remove** a chave
+       `inner_name` de `raw_entities` (`:34`) ao unir, então cada nome
+       processado encolhe o conjunto de candidatos dos seguintes. Com
+       `Address`, `Hasaddress` e `Hashasaddress`: processando `Hasaddress`
+       primeiro ele vai para `Address` e some, e aí `Hashasaddress` não acha
+       mais ninguém; na ordem inversa, `Hashasaddress` acha `Hasaddress`, e as
+       duas acabam em `Address`. Duas entidades ou três, pela ordem.
+    2. A de `raw_entities`, iterada por `_find_aliased_entity` — `findFirst`
+       (`:21-26`) devolve o primeiro match e ignora os demais, limitação que o
+       autor documentou no comentário (`:24-25`).
+
+    No original as duas são ordem de bucket (`HashSet`/`HashMap`,
+    `SchemaInference.java:55-56,66-67`), estável entre execuções porque o
+    `hashCode` de `String` é função pura. Em Python nenhuma das duas se
+    reproduz: o `set` é randomizado por `PYTHONHASHSEED`. O porte usa ordem de
+    inserção nas duas — não é a ordem do Java, é a única reproduzível que
+    existe. Mesmo trade-off de `create_reference_matcher`.
     """
     for inner_name in inner_schema_names:
         match = _find_aliased_entity(raw_entities, inner_name)
