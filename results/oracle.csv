@@ -1,0 +1,13 @@
+run_id,total_time,normalized
+oracle_chain-mongodb-up_a_small-23,19.03,339.21568627450984
+oracle_chain-mongodb-up_a_medium-23,18.81,182.62135922330097
+oracle_chain-mongodb-up_a_large-23,19.78,91.0681399631676
+oracle_chain-mongodb-up_a_larger-23,21.85,37.59463179628355
+oracle_chain-mongodb-up_b_small-23,18.42,308.0267558528428
+oracle_chain-mongodb-up_b_medium-23,18.81,208.53658536585363
+oracle_chain-mongodb-up_b_large-23,19.78,77.17518532969179
+oracle_chain-mongodb-up_b_larger-23,21.53,40.993907083016
+oracle_chain-neo4j-movies_min-23,8.22,56.6896551724138
+oracle_chain-neo4j-up_medium-23,10.70,95.87813620071684
+oracle_chain-neo4j-up_large-23,17.95,58.54533594259622
+oracle_chain-neo4j-up_larger-23,41.13,43.38149984178884
