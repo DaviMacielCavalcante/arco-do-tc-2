@@ -23,6 +23,37 @@ já existente (``_infer_object``), o original **não** combina metadados —
 inteiro da ocorrência nova — ``count`` **e** timestamps, não só bounds de
 array — é descartado. Este módulo replica isso fielmente: **não** chama
 ``combine_metadata`` nesse ponto, de propósito.
+
+Ordem de ``inner_schema_names``
+-------------------------------
+``innerSchemaNames`` é um ``HashSet<String>`` no original
+(``SchemaInference.java:56,67``), iterado em ``innerCountAndTimestampsAdjust``
+(``:100``). Essa iteração **não é comutativa**: quando uma entidade interna
+contém outra, quem roda primeiro combina ``meta`` ainda zerado da outra, e o
+``count`` final depende da ordem.
+
+O porte usa ``dict[str, None]`` (ordered-set), **não** ``set[str]``. Um
+``HashSet`` do Java tem ordem de bucket estável — o ``hashCode`` de ``String``
+é função pura, igual em toda execução. Um ``set`` do Python **não**: a ordem
+varia entre processos por causa do ``PYTHONHASHSEED``, que randomiza o hash de
+``str`` por segurança. Medido no User Profiles (Rota A): sob sementes 0..7 o
+``count`` de ``Movie_id`` alternava entre ``0`` e o do documento-raiz sobre a
+mesma entrada — o porte era *menos* determinístico que o original, não mais
+fiel a ele. Pela ordem de inserção (o filho entra antes do pai, porque
+``_infer_object`` registra a entidade depois de descer nos campos) o valor é
+``0``, que é o do XMI-oráculo.
+
+É o mesmo raciocínio já aplicado em
+:func:`~uschema.inference.strategies.create_reference_matcher` (1.3b), que
+trocou ``HashSet`` por ``dict.fromkeys`` por este motivo exato: onde o original
+depende de uma ordem de hash que o Python não reproduz, o porte escolhe a única
+ordem reproduzível que existe. Não trocar de volta por ``set`` "porque o Java é
+``Set``" — o tipo casa, o comportamento não.
+
+Os dois consumidores — o ``joiner`` (``_Joiner``) e
+:func:`inner_count_and_time_stamps_adjust` — recebem ``Iterable[str]`` por
+isso: o tipo concreto que passa é o ordered-set, e a assinatura não deve
+convidar a trocá-lo de volta.
 """
 
 from __future__ import annotations
@@ -50,7 +81,7 @@ __all__ = ["SchemaInference"]
 _IGNORED_ATTRIBUTES: frozenset[str] = frozenset({"_type"})
 _TYPE_MARKER_ATTRIBUTE = "_type"
 
-_Joiner = Callable[[dict[str, list[SchemaComponent]], set[str]], None]
+_Joiner = Callable[[dict[str, list[SchemaComponent]], Iterable[str]], None]
 _Merger = Callable[[dict[str, list[SchemaComponent]]], None]
 
 
@@ -100,7 +131,9 @@ class SchemaInference:
         valores) vira o parâmetro ``is_root: bool`` recebido em ``_infer``.
         """
         self._raw_entities: dict[str, list[SchemaComponent]] = {}
-        self._inner_schema_names: set[str] = set()
+        # `dict[str, None]`, não `set[str]`: ordered-set. Ver "Ordem de
+        # `inner_schema_names`" na docstring do módulo.
+        self._inner_schema_names: dict[str, None] = {}
         self._joiner: _Joiner = joiner
         self._merger: _Merger = merger
         self._type_marker_attribute = type_marker_attribute
@@ -270,7 +303,7 @@ class SchemaInference:
 
             self._raw_entities[capitalized_name] = new_list
             if not is_root:
-                self._inner_schema_names.add(capitalized_name)
+                self._inner_schema_names[capitalized_name] = None
             return schema
 
     def _infer_array(self, value: Any, name: str) -> ArraySC:
@@ -361,7 +394,7 @@ def _java_string_sort_key(value: str) -> bytes:
 
 
 def inner_count_and_time_stamps_adjust(
-    inner_schema_names: set[str], raw_entities: dict[str, list[SchemaComponent]]
+    inner_schema_names: Iterable[str], raw_entities: dict[str, list[SchemaComponent]]
 ) -> None:
     """Propagar ``meta`` das ocorrências-raiz para as entidades internas.
 
@@ -372,8 +405,12 @@ def inner_count_and_time_stamps_adjust(
 
     Parameters
     ----------
-    inner_schema_names : set of str
+    inner_schema_names : iterable of str
         Nomes de entidade marcados como não-raiz (``self._inner_schema_names``).
+        ``Iterable``, não ``set``: quem chama passa um ``dict[str, None]``
+        (ordered-set) — ver "Ordem de ``inner_schema_names``" na docstring do
+        módulo. A iteração abaixo **não é comutativa**, então o tipo carrega
+        uma garantia de ordem, não só de pertinência.
     raw_entities : dict[str, list[SchemaComponent]]
         Todas as variações inferidas até aqui (``self._raw_entities``).
 

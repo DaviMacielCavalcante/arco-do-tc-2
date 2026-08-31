@@ -87,7 +87,7 @@ def generate(size: str, uri: str, seed: int) -> tuple[float, float]:
     return t_cleanup, time.perf_counter() - start
 
 
-def measure(size: str, uri: str, seed: int, pkg: EPackage) -> Neo4jSizeRun:
+def measure(size: str, uri: str, pkg: EPackage) -> Neo4jSizeRun:
     """Extrai, constrói e compara com o XMI-oráculo do tamanho."""
     schema = SCHEMA_BY_SIZE[size]
 
@@ -115,7 +115,13 @@ def measure(size: str, uri: str, seed: int, pkg: EPackage) -> Neo4jSizeRun:
 
     start = time.perf_counter()
 
-    save_model(port, XMI_OUTPUT / f"neo4j_{schema}_seed{seed}.xmi")
+    # Sem o sufixo de semente, como em `run_size_mongo.py`. Com ele, o caminho
+    # colidia com o do porte gravado por `run_oracle_neo4j.py` (mesmo `schema`,
+    # mesma semente): as duas baterias rodam na mesma suíte e a de tamanho vem
+    # depois, então o XMI da cadeia do oráculo era sobrescrito. O veredito não
+    # dependia disso — a comparação usa o objeto em memória —, mas o arquivo
+    # deixado em disco não era o que o nome dizia.
+    save_model(port, XMI_OUTPUT / f"neo4j_{schema}.xmi")
 
     t_write = time.perf_counter() - start
 
@@ -188,7 +194,7 @@ def main() -> None:
             # duas é medida do porte nem do oráculo, e as duas saíram dos CSVs.
             t_cleanup, t_generation = generate(size, args.uri, args.seed)
 
-            run = measure(size, args.uri, args.seed, pkg)
+            run = measure(size, args.uri, pkg)
 
             print(
                 f"  limpeza={t_cleanup:.2f}s"

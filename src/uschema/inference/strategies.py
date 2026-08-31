@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import functools
 import re
+from collections.abc import Iterable
 from typing import ClassVar
 
 from pyecore.ecore import EObject
@@ -57,7 +58,7 @@ _AGGREGATE_HINT_WORDS = (
 
 def join_aggregated_entities(
     raw_entities: dict[str, list[SchemaComponent]],
-    inner_schema_names: set[str],
+    inner_schema_names: Iterable[str],
 ) -> None:
     """Unir entidades cujo nome é uma variação com "hint word" de agregação.
 
@@ -69,9 +70,12 @@ def join_aggregated_entities(
     ----------
     raw_entities : dict[str, list[SchemaComponent]]
         Mapa entidade → variações, mutado no lugar.
-    inner_schema_names : set of str
+    inner_schema_names : iterable of str
         Nomes de entidades não-raiz candidatas a "alias agregado" de outra
-        entidade (ex.: ``"hasEmployees"`` de ``"Employee"``).
+        entidade (ex.: ``"hasEmployees"`` de ``"Employee"``). ``Iterable``,
+        não ``set``: quem chama passa um ``dict[str, None]`` (ordered-set) —
+        ver "Ordem de ``inner_schema_names``" na docstring de
+        ``schema_inference``.
 
     Notes
     -----
@@ -85,6 +89,27 @@ def join_aggregated_entities(
     renomeia todas as variações da entidade interna (``:30``) e as concatena
     na lista da entidade encontrada (``:33``), removendo a entrada antiga
     (``:34``).
+
+    **Duas ordens decidem o resultado aqui, e nenhuma é comutativa.**
+
+    1. A de ``inner_schema_names``, iterada no laço externo. O corpo
+       **remove** a chave ``inner_name`` de ``raw_entities`` (``:34``) ao
+       unir, então cada nome processado encolhe o conjunto de candidatos dos
+       seguintes. Com ``Address``, ``Hasaddress`` e ``Hashasaddress``:
+       processando ``Hasaddress`` primeiro ele vai para ``Address`` e some, e
+       aí ``Hashasaddress`` não acha mais ninguém; na ordem inversa,
+       ``Hashasaddress`` acha ``Hasaddress``, e as duas acabam em ``Address``.
+       Duas entidades ou três, pela ordem.
+    2. A de ``raw_entities``, iterada no laço interno — o ``break`` no
+       primeiro match reproduz o ``findFirst`` (``:21-26``) e ignora os
+       demais.
+
+    No original as duas são ordem de bucket (``HashSet``/``HashMap``,
+    ``SchemaInference.java:55-56,66-67``), estável entre execuções porque o
+    ``hashCode`` de ``String`` é função pura. Em Python nenhuma das duas se
+    reproduz: o ``set`` é randomizado por ``PYTHONHASHSEED``. O porte usa
+    ordem de inserção nas duas — não é a ordem do Java, é a única
+    reproduzível que existe. Mesmo trade-off de ``create_reference_matcher``.
     """
     for inner_name in inner_schema_names:
         match_key = None

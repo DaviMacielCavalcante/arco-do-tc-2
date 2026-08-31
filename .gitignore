@@ -7,8 +7,62 @@ __pycache__/
 *.so
 
 # results
-results/
-out/
+#
+# `results/` e `out/` seguem ignorados: as baterias são reexecutáveis e o disco
+# acumula uma corrida por execução. A EXCEÇÃO é a bateria canônica de
+# 2026-08-27 11:10 — a que sustenta as tabelas e figuras do artigo. Ela é
+# liberada arquivo a arquivo, não por diretório nem por glob: um glob deixaria
+# a próxima corrida da mesma semente entrar sozinha, que é justamente o que não
+# se quer. Corrida nova = arquivo novo = ignorado por padrão.
+# Proveniência e limitações: `results/README.md`.
+results/*
+!results/README.md
+!results/comparisons.csv
+!results/divergences.csv
+!results/oracle.csv
+!results/runs.csv
+
+out/*
+!out/oraculo/
+!out/porte/
+out/oraculo/*
+out/porte/*
+
+!out/oraculo/mongo_up_a_small_seed23.xmi
+!out/oraculo/mongo_up_a_medium_seed23.xmi
+!out/oraculo/mongo_up_a_large_seed23.xmi
+!out/oraculo/mongo_up_a_larger_seed23.xmi
+!out/oraculo/mongo_up_b_small_seed23.xmi
+!out/oraculo/mongo_up_b_medium_seed23.xmi
+!out/oraculo/mongo_up_b_large_seed23.xmi
+!out/oraculo/mongo_up_b_larger_seed23.xmi
+!out/oraculo/neo4j_movies_min_seed23.xmi
+!out/oraculo/neo4j_up_medium_seed23.xmi
+!out/oraculo/neo4j_up_large_seed23.xmi
+!out/oraculo/neo4j_up_larger_seed23.xmi
+
+!out/porte/mongo_northwind_file.xmi
+!out/porte/mongo_northwind_database.xmi
+!out/porte/mongo_up_a_small_seed23.xmi
+!out/porte/mongo_up_a_medium_seed23.xmi
+!out/porte/mongo_up_a_large_seed23.xmi
+!out/porte/mongo_up_a_larger_seed23.xmi
+!out/porte/mongo_up_b_small_seed23.xmi
+!out/porte/mongo_up_b_medium_seed23.xmi
+!out/porte/mongo_up_b_large_seed23.xmi
+!out/porte/mongo_up_b_larger_seed23.xmi
+!out/porte/mongo_up_a_small.xmi
+!out/porte/mongo_up_a_medium.xmi
+!out/porte/mongo_up_a_large.xmi
+!out/porte/mongo_up_a_larger.xmi
+!out/porte/mongo_up_b_small.xmi
+!out/porte/mongo_up_b_medium.xmi
+!out/porte/mongo_up_b_large.xmi
+!out/porte/mongo_up_b_larger.xmi
+!out/porte/neo4j_movies_min_seed23.xmi
+!out/porte/neo4j_up_medium_seed23.xmi
+!out/porte/neo4j_up_large_seed23.xmi
+!out/porte/neo4j_up_larger_seed23.xmi
 
 # Distribution / packaging
 .Python
@@ -61,6 +115,10 @@ cover/
 
 # Django stuff:
 *.log
+# Exceção: o log da bateria canônica (ver bloco `results`/`out` no topo). É a
+# fonte da figura dos tempos de job do Spark; foi anonimizado antes de entrar —
+# o que foi substituído está em `results/README.md`.
+!logs/baterias_20260827_111058.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
