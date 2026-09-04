@@ -34,9 +34,11 @@ Mapeamento teste → módulo do porte:
 | `TypesTest` | 1.2 / 1.4 | o `_type` interno não vaza para o modelo | sim → cortar na tripla |
 | `SimplifyAggrTest` | `inference.strategies` (1.3) | merge de agregados equivalentes | sim → cortar na tripla |
 
-> **Onde você corrigiu um bug (#6/#7/#8)**, porte a *estrutura* do teste mas
-> afirme o valor **corrigido**. Para o #8, **acrescente** um teste novo com
-> array de tamanho variável afirmando a contagem correta (soma = volume real).
-> O **#7** (array vazio) não tem JUnit nenhum — é teste novo.
+> **Onde você corrigiu um bug (#6/#7)**, porte a *estrutura* do teste mas
+> afirme o valor **corrigido**. O **#8** é replicado fielmente (`bugs_originais.md`
+> §#8): onde uma variação colapsa, a asserção do JUnit original **já reflete** o
+> bug — porte como está, sem "consertar". **Acrescente** um teste novo confirmando
+> que o `meta` (count + timestamps) da segunda ocorrência **some por completo**,
+> não é somado. O **#7** (array vazio) não tem JUnit nenhum — é teste novo.
 
 Os dados (`testSources/*.json`) vêm junto — versionar em `tests/fixtures/`.

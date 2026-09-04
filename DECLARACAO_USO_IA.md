@@ -66,13 +66,15 @@ que a IA foi empregada:
   indexado antes da verificação de tamanho), aplicados no oráculo porque sem
   eles não se obtém XMI algum para comparar — decisão já prevista em
   `bugs_originais.md`. O bug `#8`, que não aborta a execução (apenas distorce
-  a contagem), continua corrigido **apenas** no porte Python, por decisão
-  deliberada (ver `oracle/README.md`). Também configurada e testada de
-  verdade: a suíte JUnit original dentro da imagem (`add-test-source` +
-  dependências de teste no `pom.xml` de `oracle/uschema-build/runner`;
-  65/76 passam, e a causa dos 11 restantes foi identificada lendo o
-  código-fonte real — nenhum decorre do empacotamento, ver
-  `oracle/docker_explain.md`) e o caminho Neo4j de ponta a ponta. Também
+  a contagem), fica **deliberadamente sem patch no oráculo** e é **replicado
+  fielmente também no porte Python** — é o comportamento sob análise, e o
+  resultado do trabalho é mostrar que a subcontagem aparece nas duas
+  implementações (ver `oracle/README.md` e `bugs_originais.md` #8). Também
+  configurada e testada de verdade: a suíte JUnit original dentro da imagem
+  (`add-test-source` + dependências de teste no `pom.xml` de
+  `oracle/uschema-build/runner`; 65/76 passam, e a causa dos 11 restantes foi
+  identificada lendo o código-fonte real — nenhum decorre do empacotamento,
+  ver `oracle/docker_explain.md`) e o caminho Neo4j de ponta a ponta. Também
   unificadas as duas compilações Maven separadas (Mongo/Neo4j) numa só,
   depois de verificar que migrar o Mongo de Spark 2.4.1/Scala 2.11 para
   3.0.1/Scala 2.12 (a versão já usada pelo Neo4j) produz saída idêntica

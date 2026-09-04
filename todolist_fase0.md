@@ -96,7 +96,7 @@
 >
 > Também: os 17 arquivos de `documents/.../examples/tests/` **não são testes** (16 têm corpo vazio, o 17º é um *runner* sem asserção), e o `automated/AutoTest1` só afirma `assertEquals(true, true)`. Não portar.
 
-> **Testes que codificam o bug.** Onde você corrigiu um bug (#6/#7/#8), porte a *estrutura* do teste mas afirme o valor **corrigido**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (só aparece com array de tamanho variável) — a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
+> **Testes que codificam o bug.** Onde você corrigiu um bug (#6/#7), porte a *estrutura* do teste mas afirme o valor **corrigido**; o #8, replicado fielmente (ver `bugs_originais.md` #8), é o oposto — afirme o valor **do bug**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (só aparece com array de tamanho variável) — a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
 
 ---
 

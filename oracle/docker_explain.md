@@ -24,7 +24,7 @@ não só verificadas em teoria ou por inspeção de código.
 | `entrypoint.sh` como ponte | `entrypoint.sh` | os `main` Java não aceitam `--db`/`--kind` diretamente; traduz pro `-Dexec.mainClass`/`config.properties` que cada um espera |
 | Patches #1, #4, #5 | `patches/000{1,4,5}-*.patch` | incompatibilidade de build (Guice, JDK 8, hardcode de máquina) |
 | Patches #6, #7 | `patches/000{6,7}-*.patch` | crashes reais — sem eles não há XMI algum |
-| #8 sem patch | — | preserva a divergência que a Fase 0.3 precisa citar |
+| #8 sem patch | — | não derruba o job e é o comportamento sob análise; corrigir no oráculo descaracterizaria o baseline |
 | #2, #3 sem patch | — | pom original nunca é lido nesta build |
 | `dependency:go-offline` sem `-o` no `compile` | `Dockerfile` | resolução incompleta, descoberto rodando de verdade |
 | `mkdir -p outputs/` no caminho Mongo | `entrypoint.sh` | `EcoreModelIO.write()` não cria a pasta sozinho |
@@ -234,10 +234,10 @@ compila ou o `main` nem roda fora da máquina do autor original:
 ### #6, #7 — crashes reais, descobertos rodando de verdade
 
 A primeira versão deste Dockerfile deixava #6, #7 e #8 igualmente sem
-patch, generalizando a lógica "bug de equivalência, corrigido só no porte
-Python". Isso estava errado para #6 e #7: rodar o build/run de verdade
-contra o Northwind expôs os dois como **crashes que abortam o job Spark
-inteiro**, não como números levemente errados.
+patch, generalizando a lógica "bug de equivalência, fora do escopo dos
+patches do oráculo". Isso estava errado para #6 e #7: rodar o build/run
+de verdade contra o Northwind expôs os dois como **crashes que abortam o
+job Spark inteiro**, não como números levemente errados.
 
 - **#6** — `Helpers.generateDocumentPair` chama `doc.getObjectId("_id")`
   sem checar o tipo, lançando `ClassCastException` pra qualquer coleção com
@@ -268,13 +268,14 @@ dataset realista com `_id` não-`ObjectId` ou algum array vazio.
 
 Ao contrário de #6/#7, o bug #8 (`SchemaInference`, `meta`/contagem
 descartado ao colapsar uma variação já existente) **não derruba o job** —
-produz XMI completo, só com a contagem estruturalmente errada. Se o oráculo
-também o corrigisse, ele deixaria de ser um baseline independente nesse
-ponto: a comparação estrutural (Fase 0.3, `uschema.validation.equivalence`)
-pararia de conseguir mostrar a diferença de comportamento que o capítulo de
-bugs do TCC documenta — o porte Python corrige #8 "por construção", e é
-justamente contra um oráculo que ainda tem o bug que essa correção precisa
-ser demonstrada.
+produz XMI completo, só com a contagem estruturalmente errada. Como não
+impede a extração de terminar, não há motivo de build/execução para
+patchá-lo aqui — e há um motivo forte contra: o #8 **é** o comportamento
+sob análise. O porte Python **replica o #8 fielmente** (`SchemaInference`
+não combina `meta` no colapso de variações — ver `bugs_originais.md` #8),
+e o resultado central que o TCC documenta é que o déficit de contagem
+aparece nas **duas** implementações. Aplicar `combineMetadata` no oráculo
+apagaria justamente o baseline contra o qual essa equivalência é medida.
 
 O oráculo existe para reproduzir o comportamento **original**, bugs
 inclusos; só os bugs que impedem sequer compilar, rodar ou completar a

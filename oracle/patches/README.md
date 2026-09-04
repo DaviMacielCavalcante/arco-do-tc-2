@@ -16,7 +16,7 @@ sem patch. Motivo de cada decisão, e como os patches foram verificados:
 | **#5** | `Neo4j2USchemaMain.java` | remove hardcode de máquina (`hadoop.home.dir`, supressão de log); adiciona `args[0]` como nome do banco + validação (rejeita `/`, `\`, `..`) | `.patch` — `0005-neo4jmain-cli-arg-no-hardcode.patch` |
 | **#6** | `Helpers.java` | `_id` genérico: `doc.get("_id")` + checagem `instanceof ObjectId`, timestamp `0L` se não for | `.patch` — `0006-helpers-generic-id.patch` |
 | **#7** | `USchemaModelBuilder.java` | move `sc.getInners().get(0)` pra dentro do `else`, aproveitando o short-circuit do `\|\|` já existente | `.patch` — `0007-arraysc-empty-shortcircuit.patch` |
-| #8 | `SchemaInference.java` | `combineMetadata` ao colapsar variações (contagem) | sem patch, de propósito — corrigido só no porte Python |
+| #8 | `SchemaInference.java` | `combineMetadata` ao colapsar variações (contagem) — correção upstream candidata, não aplicada | sem patch, de propósito — replicado fielmente também no porte (é o comportamento sob análise) |
 
 ## Aplicação
 

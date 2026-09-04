@@ -1,35 +1,35 @@
-# oracle/ — oráculo Java em Docker (Fase 0.5)
+# oracle/ — Java oracle in Docker (Phase 0.5)
 
-Papel **reduzido e opcional**: **não entra na entrega** (a ferramenta portada é
-Python puro). Serve para (a) rodar o extrator original de forma reproduzível,
-sem depender do Eclipse IDE nem de nenhuma máquina específica; e (b) gerar o
-XMI-gabarito para datasets sem golden-master pronto (Sakila, variações de
-tamanho). Agrega **reprodutibilidade**, não funcionalidade.
+**Reduced, optional role**: it is **not part of the deliverable** (the ported
+tool is pure Python). It serves to (a) run the original extractor reproducibly,
+without depending on the Eclipse IDE or any particular machine; and (b) generate
+the reference XMI for datasets that have no ready golden-master (Sakila, size
+variations). It adds **reproducibility**, not functionality.
 
-Todas as justificativas de design, decisões de patch e limitações conhecidas
-estão em **[`docker_explain.md`](docker_explain.md)** — este README fica só
-com o essencial pra usar e buildar.
+Every design rationale, patch decision and known limitation lives in
+**[`docker_explain.md`](docker_explain.md)** — this README keeps only the
+essentials for using and building the image.
 
-## Conteúdo da imagem
+## Image contents
 
-- Base `maven:3.9-eclipse-temurin-8` (JDK 8, exigido pelo Spark 3.0.1).
-- Fontes de `modelum/uschema` e `modelum/uschema-inference`, clonados num
-  commit pinado, com os `patches/` aplicados por cima.
-- Um build Maven único (`oracle/uschema-build/runner`), sem Eclipse — Mongo
-  e Neo4j no mesmo classpath, Spark 3.0.1/Scala 2.12 pros dois (unificado;
-  detalhe/validação em `docker_explain.md`).
-- Sem *fat jar*: roda via `mvn exec:java -Dexec.mainClass=...`, offline
-  depois do build.
+- Base `maven:3.9-eclipse-temurin-8` (JDK 8, required by Spark 3.0.1).
+- Sources of `modelum/uschema` and `modelum/uschema-inference`, cloned at a
+  pinned commit, with the `patches/` applied on top.
+- A single Maven build (`oracle/uschema-build/runner`), no Eclipse — Mongo and
+  Neo4j on the same classpath, Spark 3.0.1/Scala 2.12 for both (unified;
+  detail/validation in `docker_explain.md`).
+- No *fat jar*: it runs via `mvn exec:java -Dexec.mainClass=...`, offline after
+  the build.
 
-## Por que precisa de um entrypoint
+## Why an entrypoint is needed
 
-Os dois `main` Java não aceitam `--db`/`--kind` diretamente — o Mongo lê um
-`config.properties` do classpath, o Neo4j tem bolt/usuário/senha fixos no
-código. `entrypoint.sh` traduz `--db`/`--kind` (argumentos de linha de
-comando) e, pro Mongo, `MONGO_URL`/`MONGO_COLLECTIONS` (variáveis de
-ambiente) pra essa interface. Detalhe completo em `docker_explain.md`.
+The two Java `main`s do not accept `--db`/`--kind` directly — Mongo reads a
+`config.properties` from the classpath, Neo4j has bolt/user/password fixed in the
+code. `entrypoint.sh` translates `--db`/`--kind` (command-line arguments) and,
+for Mongo, `MONGO_URL`/`MONGO_COLLECTIONS` (environment variables) into that
+interface. Full detail in `docker_explain.md`.
 
-## Uso
+## Usage
 
 ```bash
 # MongoDB
@@ -43,35 +43,35 @@ docker run --network=host --memory=6g -v "$PWD/out:/output" \
   extrator-uschema --db movies_min --kind neo4j
 ```
 
-> **O `--db` do Neo4j é o nome do SCHEMA, não do banco a conectar.**
-> Verificado no `Neo4j2USchema.java` (SHA pinado): o `databaseName` vai só para
-> `Json2USchemaModel(databaseName)`; o `SparkProcess` recebe apenas
-> `(samplingRatio, bolt, user, password)` e sempre lê o **banco padrão**. Duas
-> consequências: (1) Neo4j **Community**, que só tem um banco de usuário, não é
-> obstáculo; (2) o valor passado precisa **casar com o nome do schema que o
-> porte usa** (`movies_min`, `up_medium`, `up_large`, `up_larger`) — divergência
-> de `SCHEMA_NAME` é **fatal** no harness da Fase 0.3.
+> **The Neo4j `--db` is the name of the SCHEMA, not of the database to connect
+> to.** Verified in `Neo4j2USchema.java` (pinned SHA): `databaseName` goes only
+> to `Json2USchemaModel(databaseName)`; `SparkProcess` receives just
+> `(samplingRatio, bolt, user, password)` and always reads the **default
+> database**. Two consequences: (1) Neo4j **Community**, which has only one user
+> database, is not an obstacle; (2) the value passed must **match the schema name
+> the port uses** (`movies_min`, `up_medium`, `up_large`, `up_larger`) — a
+> `SCHEMA_NAME` mismatch is **fatal** in the Phase 0.3 harness.
 >
-> **O caminho Neo4j foi exercitado só em grafo mínimo.** A checklist da 0.5
-> (abaixo) o marca como testado ponta a ponta, mas contra um punhado de nós
-> criados via `cypher-shell` — nunca contra os 100k–800k dos tamanhos do User
-> Profiles. É volume, não caminho, o que segue sem prova. A saída deve ir para
-> `out/oraculo/` (ver `resources/README.md`, "Onde cada XMI mora").
+> **The Neo4j path has only been exercised on a minimal graph.** The 0.5
+> checklist (below) marks it as tested end to end, but against a handful of nodes
+> created with `cypher-shell` — never against the 100k–800k of the User Profiles
+> sizes. It is volume, not the path, that remains unproven. The output should go
+> to `out/oraculo/` (see `resources/README.md`, "Onde cada XMI mora").
 
-`--network=host` porque o container se conecta a um banco **já rodando e já
-populado** no host — o oráculo é um extrator, não empacota dado nenhum. O
-`DATABASE_BOLT` é constante (`bolt://localhost:7687`) no fonte original, então
-sem `--network=host` o container procuraria o banco dentro de si mesmo.
-Preparar o banco é etapa à parte, fora deste Dockerfile. Memória ≥ ~5–6 GB
-pros datasets de tamanho maior.
+`--network=host` because the container connects to a database **already running
+and already populated** on the host — the oracle is an extractor, it packages no
+data. `DATABASE_BOLT` is a constant (`bolt://localhost:7687`) in the original
+source, so without `--network=host` the container would look for the database
+inside itself. Preparing the database is a separate step, outside this
+Dockerfile. Memory ≥ ~5–6 GB for the larger size datasets.
 
-**Windows/Git Bash:** prefixe os comandos acima com `MSYS_NO_PATHCONV=1`.
-Sem isso, o MSYS2 reescreve o lado `/output` do `-v` como caminho do
-Windows — o container roda e reporta sucesso, mas o `.xmi` não aparece na
-pasta host (mount silenciosamente quebrado, sem erro nenhum). Descoberto
-rodando de verdade — detalhe em `docker_explain.md`.
+**Windows/Git Bash:** prefix the commands above with `MSYS_NO_PATHCONV=1`.
+Without it, MSYS2 rewrites the `/output` side of `-v` as a Windows path — the
+container runs and reports success, but the `.xmi` never appears in the host
+folder (mount silently broken, with no error at all). Discovered by running it
+for real — detail in `docker_explain.md`.
 
-**Suíte JUnit original** (baseline, comando manual — não passa pelo
+**Original JUnit suite** (baseline, manual command — does not go through
 `entrypoint.sh`/`--db`/`--kind`):
 
 ```bash
@@ -79,9 +79,9 @@ docker run --rm --entrypoint sh extrator-uschema \
   -c "cd /app/uschema-build/runner && mvn -q -B -o test"
 ```
 
-Não precisa de `--network=host` nem `MONGO_URL`/`MONGO_COLLECTIONS` — os
-testes cobertos não conectam em banco nenhum. Detalhe/cobertura/resultado
-em `docker_explain.md`, seção "Suíte JUnit original".
+It needs neither `--network=host` nor `MONGO_URL`/`MONGO_COLLECTIONS` — the
+covered tests connect to no database. Detail/coverage/result in
+`docker_explain.md`, "Suíte JUnit original" section.
 
 ## Build
 
@@ -89,17 +89,17 @@ em `docker_explain.md`, seção "Suíte JUnit original".
 docker build -t extrator-uschema oracle/
 ```
 
-Os dois commits upstream vêm pinados como default de `ARG` no `Dockerfile` —
-são os SHAs contra os quais este oráculo foi validado (patches aplicando
-limpos, baseline JUnit 65/76, `northwind.xmi` equivalente ao gabarito):
+The two upstream commits are pinned as the `ARG` default in the `Dockerfile` —
+they are the SHAs this oracle was validated against (patches applying cleanly,
+JUnit baseline 65/76, `northwind.xmi` equivalent to the reference):
 
-| Repositório | SHA pinado |
+| Repository | Pinned SHA |
 |---|---|
 | `modelum/uschema` | `6dfd6b4a6c04c67e49a80fb6cb6da9dd0f0f0f8c` |
 | `modelum/uschema-inference` | `0f8f58c31f7661ce9be7333a1f34b9a05321a993` |
 
-Buildar sem `--build-arg` reproduz exatamente o oráculo citado no TCC. Para
-avançar o pin (deliberadamente, revalidando o conjunto), sobrescreva:
+Building without `--build-arg` reproduces exactly the oracle cited in the thesis.
+To advance the pin (deliberately, revalidating the set), override it:
 
 ```bash
 docker build \
@@ -108,22 +108,22 @@ docker build \
   -t extrator-uschema oracle/
 ```
 
-## Tarefas (Fase 0.5)
+## Tasks (Phase 0.5)
 
 - [x] `Dockerfile` + `entrypoint.sh` + `patches/` (patches #1/#4/#5/#6/#7
-      verificados, #2/#3 satisfeitos estruturalmente, #8 deliberadamente
-      fora — detalhe em `docker_explain.md`).
-- [x] Rodar o `docker build` de verdade e validar que a imagem builda.
-- [x] Rodar a extração dentro do container contra um banco de teste real
-      (Northwind, MongoDB) — `out/northwind.xmi` gerado com sucesso.
-- [x] Validar `out/northwind.xmi` contra o gabarito
+      verified, #2/#3 satisfied structurally, #8 deliberately left out —
+      detail in `docker_explain.md`).
+- [x] Run the real `docker build` and validate that the image builds.
+- [x] Run the extraction inside the container against a real test database
+      (Northwind, MongoDB) — `out/northwind.xmi` generated successfully.
+- [x] Validate `out/northwind.xmi` against the reference
       `resources/mongodb/model_northwind.xmi` via `compare()`
-      (`uschema.validation.equivalence`, Fase 0.3): `equivalent: True`, zero
-      divergências fatais (as 8 não-fatais batem com a assinatura do bug
-      #8, esperado). Detalhe em `docker_explain.md`.
-- [x] Testar o caminho Neo4j (`--kind neo4j`) de ponta a ponta — grafo mínimo
+      (`uschema.validation.equivalence`, Phase 0.3): `equivalent: True`, zero
+      fatal divergences (the 8 non-fatal ones match the bug #8 signature,
+      as expected). Detail in `docker_explain.md`.
+- [x] Test the Neo4j path (`--kind neo4j`) end to end — minimal graph
       (User/Movie, `WATCHED`/`FAVORITE`) via `cypher-shell`, `neo4j.xmi`
-      gerado com sucesso.
-- [x] Rodar a suíte JUnit original dentro da imagem — 65/76 passam; os 11
-      que falham têm causa raiz identificada e são defeitos pré-existentes
-      do repo original (não do empacotamento). Detalhe em `docker_explain.md`.
+      generated successfully.
+- [x] Run the original JUnit suite inside the image — 65/76 pass; the 11
+      that fail have an identified root cause and are pre-existing defects
+      of the original repo (not of the packaging). Detail in `docker_explain.md`.

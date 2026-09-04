@@ -75,7 +75,7 @@ A correção do porte vem em **quatro camadas**, da mais barata/localizante para
 3. **Oráculo via Docker (0.5).** Só para datasets **sem** gabarito pronto (Sakila, variações de volume): gera-se o XMI esperado rodando o Java.
 4. **Validação contra o banco (opcional).** Os pacotes `*.validation` do Java (`MongoDBValidator`, `Doc2USchemaValidationMain`, os `Neo4j…QueryBuilder`) não são JUnit — são uma ferramenta que consulta o banco de volta e checa se o schema inferido descreve os dados. É uma checagem **independente** de qualquer implementação (confere contra a realidade, não contra outro código). Pode ser portada ou usada como referência cruzada em Java.
 
-> **Cuidado com testes que codificam o bug.** Onde você corrigiu um bug (#6/#7/#8), porte a *estrutura* do teste mas afirme o valor **corrigido**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (que só aparece com array de tamanho variável), então a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
+> **Cuidado com testes que codificam o bug.** Onde você corrigiu um bug (#6/#7), porte a *estrutura* do teste mas afirme o valor **corrigido**. O #8 é o caso oposto — replicado fielmente (ver `bugs_originais.md` #8) —, então onde um JUnit o exercita, afirme o valor **do bug**. Na prática, os testes de regressão minúsculos em geral nem disparam o #8 (que só aparece com array de tamanho variável), então a maioria porta limpa; só os das áreas de bug pedem esse ajuste.
 
 **Tarefas:**
 - [ ] Inventariar os JUnit do repo (`*/test/regression`, `*/test`, `documents/.../examples/tests`) e seus dados (`testSources/*.json`).
