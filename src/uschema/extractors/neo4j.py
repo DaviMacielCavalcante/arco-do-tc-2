@@ -263,7 +263,7 @@ def get_type_name(sentinel: Any) -> str:
 
 
 def _entity_properties(entity: _RelationshipLike | _NodeLike) -> dict[str, Any]:
-    return {key: obtain_type(entity[key]) for key in entity.keys()}
+    return {key: obtain_type(entity[key]) for key in entity.keys()}  # noqa: SIM118
 
 
 def _relationship_archetype(

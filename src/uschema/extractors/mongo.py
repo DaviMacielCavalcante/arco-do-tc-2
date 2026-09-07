@@ -253,7 +253,9 @@ def _simplify_value(simple_doc: Any) -> Any:
         raise TypeError(f"Document field type not supported: {type(simple_doc)}")
 
 
-def generate_document_pair(document: Mapping[str, Any]) -> tuple[dict[str, Any], tuple[int, int, int]]:
+def generate_document_pair(
+    document: Mapping[str, Any],
+) -> tuple[dict[str, Any], tuple[int, int, int]]:
     """Gerar o par (esqueleto simplificado, dados de janela) de um documento.
 
     Porte de ``Helpers.generateDocumentPair`` (``Helpers.java:64-70``), com a
@@ -278,13 +280,9 @@ def generate_document_pair(document: Mapping[str, Any]) -> tuple[dict[str, Any],
         isolado ainda não foi combinado com nenhum outro).
     """
     doc_id = document.get("_id")
-    if isinstance(doc_id, ObjectId):
-        time = int(doc_id.generation_time.timestamp())
-    else:
-        # Bug #6: `_id` não é ObjectId (ex.: dado de origem relacional).
-        # 0 é sentinela, não um timestamp real.
-        time = 0
-
+    # Bug #6: `_id` não é ObjectId (ex.: dado de origem relacional).
+    # 0 é sentinela, não um timestamp real.
+    time = int(doc_id.generation_time.timestamp()) if isinstance(doc_id, ObjectId) else 0
     data = (time, time, 1)
     return (simplify(document), data)
 
