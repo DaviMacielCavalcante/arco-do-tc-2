@@ -101,7 +101,7 @@ referência usa a ordem crua que ``labels(m)`` devolveu. Pra um nó
 multi-label que também é alvo de alguma relação, isso pode gerar **dois**
 ``EntityType`` nominalmente diferentes pro mesmo nó (um pela ordem "própria",
 outro pela ordem "de referência") — **confirmado com dado real** (Neo4j Aura,
-27/07/2026, via ``scripts/check_extraction_neo4j.py``): um nó ``:Zebra:Apple``
+27/07/2026, via ``scripts/verificar_extracao_neo4j.py``): um nó ``:Zebra:Apple``
 produziu ``Apple_AND_Zebra`` (variação real) e ``Zebra_AND_Apple`` (placeholder
 vazio) como dois ``EntityType`` distintos. Catalogado como ``N1`` em
 ``bugs_originais.md``. Este módulo **preserva a assimetria**
@@ -139,26 +139,17 @@ __all__ = [
     "reduce_archetypes_by_node",
 ]
 
+_SENTINEL_OTHER = "null"
+
+_ANY_MARKER = "any"
+
 
 class _EntityLike(Protocol):
-    """Superfície comum a ``Node``/``Relationship`` que este módulo usa.
-
-    Espelha ``org.neo4j.driver.types.Entity`` (a interface Java que
-    ``Node``/``Relationship`` implementam — ``IdArchetypeMapping.java`` importa
-    ``Entity``, não uma classe concreta). Um ``Protocol``, não
-    ``neo4j.graph.Node``/``Relationship`` diretamente, porque essas classes
-    concretas exigem um ``Graph`` pra construir — dificultaria testar sem
-    banco (mesma razão de ``extractors.mongo`` aceitar ``Mapping``, não
-    ``bson.Document``).
-    """
-
     def keys(self) -> Iterator[str]: ...
     def __getitem__(self, key: str) -> Any: ...
 
 
 class _NodeLike(_EntityLike, Protocol):
-    """Espelha ``org.neo4j.driver.types.Node`` — ``Entity`` + ``labels()``."""
-
     @property
     def element_id(self) -> str: ...
     @property
@@ -166,200 +157,125 @@ class _NodeLike(_EntityLike, Protocol):
 
 
 class _RelationshipLike(_EntityLike, Protocol):
-    """Espelha ``org.neo4j.driver.types.Relationship`` — ``Entity`` + ``type()``."""
-
     type: str
 
 
-#: Sentinela pra tipo Cypher fora de LIST/BOOLEAN/STRING/FLOAT/INTEGER
-#: (``TypeUtils.java:47``, ``NULL``). É uma *string*, não ``None`` — sobrevive
-#: ao round-trip de JSON do oráculo como texto comum (ver docstring do módulo).
-_SENTINEL_OTHER = "null"
-
-#: Marcador de "tipos não convergem pra 1 só" numa lista
-#: (``TypeUtils.java:58``, ``ANY``) — usado só dentro de :func:`_list_sentinel`;
-#: nunca sobrevive como conceito distinto em :func:`get_type_name` (vira
-#: ``"string"`` pelo despacho por tipo Python, não por conteúdo — ver docstring).
-_ANY_MARKER = "any"
-
-
 def obtain_type(value: Any) -> Any:
-    """Traduzir um valor de propriedade Neo4j pra sentinela do seu tipo.
+    """Apagar um valor de propriedade Neo4j, trocando-o pela sentinela do seu tipo.
 
-    Porte de ``TypeUtils.obtainType(Value)`` (``TypeUtils.java:34-48``). O
-    driver Python já desserializa Bolt em tipos nativos, então o despacho é
-    por ``isinstance`` — na ordem **``list`` → ``bool`` → ``str`` → ``float``
-    → ``int``**, obrigatória porque ``bool`` é subclasse de ``int`` em Python
-    (armadilha igual à de ``extractors.mongo._simplify_value``; ver docstring
-    do módulo).
+    Porte de ``TypeUtils.obtainType`` (``TypeUtils.java``). Só reconhece os tipos
+    do ``TYPE_SYSTEM`` (lista/booleano/string/float/inteiro) — qualquer outro cai
+    em ``_SENTINEL_OTHER``, equivalente ao ``return NULL`` final do Java (ver o
+    cabeçalho do módulo, "Tipos Neo4j sem sentinela dedicada").
 
     Parameters
     ----------
     value : Any
-        Um valor de propriedade, como devolvido pelo driver ``neo4j``
-        (``Node``/``Relationship`` são ``Mapping``; ``value = entity[key]``).
+        Valor cru de uma propriedade do nó/relacionamento.
 
     Returns
     -------
     Any
-        ``False`` (``BOOLEAN``), ``"s"`` (``STRING``), ``0.0`` (``FLOAT``),
-        ``0`` (``INTEGER``), uma lista de 1 elemento com a sentinela do tipo
-        homogêneo — ou ``["any"]`` se a lista for vazia ou heterogênea
-        (``LIST``, recursivo) — ou a string ``"null"`` pra qualquer outro tipo
-        Cypher (``TypeUtils.java:47``; não lança — comportamento observável do
-        oráculo, ver docstring do módulo).
+        A sentinela do tipo — não o valor em si (ver o cabeçalho do módulo,
+        "bool/int"). ``bool`` é testado **antes** de ``int`` porque ``bool`` é
+        subclasse de ``int`` em Python.
     """
     if isinstance(value, list):
-        return [_list_sentinel(value)]
-    if isinstance(value, bool):
+        new_list = [_list_sentinel(value)]
+        return new_list
+    elif isinstance(value, bool):
         return False
-    if isinstance(value, str):
+    elif isinstance(value, str):
         return "s"
-    if isinstance(value, float):
+    elif isinstance(value, float):
         return 0.0
-    if isinstance(value, int):
+    elif isinstance(value, int):
         return 0
-
-    return _SENTINEL_OTHER
+    else:
+        return _SENTINEL_OTHER
 
 
 def _list_sentinel(values: list[Any]) -> Any:
-    """Colapsar os tipos de uma lista pra 1 sentinela, ou ``"any"``.
-
-    Porte de ``TypeUtils.obtainType(Iterable<Value>)`` (``TypeUtils.java:51-59``):
-    lista vazia ou com mais de 1 tipo distinto vira ``"any"`` (marcador que,
-    no despacho de :func:`get_type_name`, se torna indistinguível de uma
-    ``str`` comum — é assim que o oráculo perde essa distinção também, ver
-    docstring do módulo). A deduplicação usa ``type()`` **e** valor — não só
-    valor — porque ``False == 0`` em Python confundiria ``bool``/``int``.
-    """
-    distinct: dict[tuple[type[Any], Any], Any] = {}
+    new_dict: dict[tuple[type[Any], Any], Any] = {}
     for element in values:
-        sentinel = obtain_type(element)
-        key = (type(sentinel), _hashable(sentinel))
-        distinct.setdefault(key, sentinel)
+        result = obtain_type(element)
+        key = (type(result), _hashable(result))
+        new_dict.setdefault(key, result)
 
-    if len(distinct) == 1:
-        return next(iter(distinct.values()))
-    return _ANY_MARKER
+    if len(new_dict) == 1:
+        return next(iter(new_dict.values()))
+    else:
+        return _ANY_MARKER
 
 
 def _hashable(sentinel: Any) -> Any:
-    """Versão hasheável de uma sentinela, recursiva pra listas aninhadas.
-
-    Neo4j não permite lista aninhada como valor de propriedade (arrays só de
-    tipo primitivo homogêneo) — na prática :func:`obtain_type` nunca produz
-    aninhamento de mais de 1 nível a partir de dado real. Ainda assim, uma
-    conversão rasa (só ``tuple(sentinel)`` no nível externo) deixaria uma
-    lista aninhada intacta dentro da tupla, e ``dict`` não aceita chave com
-    lista — ``TypeError: unhashable type``. Recursivo por segurança; o custo
-    extra é irrelevante.
-    """
     if isinstance(sentinel, list):
         return tuple(_hashable(element) for element in sentinel)
-    return sentinel
+    else:
+        return sentinel
+
+
+def _simple_type_name(sentinel: Any) -> str:
+    if isinstance(sentinel, bool):
+        return "boolean"
+    elif isinstance(sentinel, str):
+        return "string"
+    elif isinstance(sentinel, float):
+        return "double"
+    elif isinstance(sentinel, int):
+        return "integer"
+    else:
+        return _ANY_MARKER
 
 
 def get_type_name(sentinel: Any) -> str:
-    """Nome do tipo do ``Attribute`` a partir da sentinela de :func:`obtain_type`.
+    """Nomear o tipo de uma sentinela, como o oráculo faz **depois** do round-trip JSON.
 
-    Porte de ``TypeUtils.getTypeName``/``geetSimpleType``
-    (``TypeUtils.java:62-90``), com as duas consequências do round-trip de
-    JSON do oráculo **já embutidas** no despacho por tipo Python — ver a seção
-    "Por que sem o round-trip" no docstring do módulo para a derivação
-    completa e verificada: ``int`` (a sentinela de ``INTEGER``) sempre vira
-    ``"integer"`` (nunca ``"long"``); uma lista vazia/heterogênea (sentinela
-    interna ``"any"``, uma ``str``) sempre vira ``"string[]"`` (nunca
-    ``"any[]"``).
+    Porte de ``TypeUtils.getTypeName``/``geetSimpleType``. Só é chamado sobre
+    valores já relidos de texto — ver o cabeçalho do módulo, "Por que sem o
+    round-trip de texto JSON", itens 1 e 2, para as duas consequências que este
+    despacho por tipo replica de graça (``Long`` sempre "integer", lista
+    heterogênea/vazia sempre "string[]").
 
     Parameters
     ----------
     sentinel : Any
-        Saída de :func:`obtain_type` pra uma propriedade.
+        Sentinela devolvida por :func:`obtain_type` (ou o elemento agregado de
+        uma lista, via :func:`_list_sentinel`).
 
     Returns
     -------
     str
-        ``"boolean"``/``"string"``/``"double"``/``"integer"``, com sufixo
-        ``"[]"`` se ``sentinel`` for uma lista (nome do tipo do primeiro —
-        único — elemento); ``"any"`` no ``else`` final
-        (``TypeUtils.java:89``), inalcançável a partir de :func:`obtain_type`
-        (que nunca devolve uma lista vazia), mantido por fidelidade ao ramo
-        Java.
+        Nome do tipo (``"string"``, ``"integer"``, ``"double"``, ``"boolean"``)
+        ou, pra lista não-vazia, o nome do tipo do primeiro elemento com
+        sufixo ``"[]"``.
     """
     if isinstance(sentinel, list):
         if len(sentinel) > 0:
-            return _simple_type_name(sentinel[0]) + "[]"
-        return _simple_type_name(sentinel)
-
-    return _simple_type_name(sentinel)
-
-
-def _simple_type_name(sentinel: Any) -> str:
-    """Porte de ``TypeUtils.geetSimpleType`` (``TypeUtils.java:75-90``).
-
-    Ordem **``bool`` → ``str`` → ``float`` → ``int``**, mesma razão de
-    :func:`obtain_type`: ``bool`` é subclasse de ``int`` em Python.
-    """
-    if isinstance(sentinel, bool):
-        return "boolean"
-    if isinstance(sentinel, str):
-        return "string"
-    if isinstance(sentinel, float):
-        return "double"
-    if isinstance(sentinel, int):
-        return "integer"
-
-    return _ANY_MARKER
+            type_name = _simple_type_name(sentinel[0])
+            type_name = type_name + "[]"
+            return type_name
+        else:
+            return _simple_type_name(sentinel)
+    else:
+        type_name = _simple_type_name(sentinel)
+        return type_name
 
 
-def node_archetype(
-    node: _NodeLike, relationship: _RelationshipLike | None, target_labels: list[str] | None
+def _entity_properties(entity: _RelationshipLike | _NodeLike) -> dict[str, Any]:
+    return {key: obtain_type(entity[key]) for key in entity.keys()}
+
+
+def _relationship_archetype(
+    relationship: _RelationshipLike, target_labels: list[str]
 ) -> dict[str, Any]:
-    """Montar o arquétipo de uma linha (nó + no máximo 1 relacionamento de saída).
-
-    Porte de ``IdArchetypeMapping.nodeToJSONObject`` (``IdArchetypeMapping.java:57-68``).
-    Os labels **próprios** do nó são ordenados (``:60-62``) — diferente do
-    ``refsTo`` de uma referência (:func:`_relationship_archetype`), que não é
-    — ver "Uma assimetria do oráculo a preservar" no docstring do módulo.
-
-    Parameters
-    ----------
-    node : Node-like
-        O nó da linha (``row.get(0)`` no Java); qualquer objeto com
-        ``.element_id``/``.labels``/``.keys()``/``__getitem__`` (o real
-        ``neo4j.graph.Node`` satisfaz isso).
-    relationship : Relationship-like or None
-        O relacionamento de saída da linha, se houver (``OPTIONAL MATCH`` pode
-        devolver ``None``).
-    target_labels : list of str or None
-        Labels do nó-alvo do relacionamento (``labels(m)``); ``None`` junto
-        com ``relationship`` ``None`` (mesma linha, ``:42`` — os dois nulos
-        juntos, nunca só um).
-
-    Returns
-    -------
-    dict of str to Any
-        ``{"labels": [...], "entity": "node", "properties": {...},
-        "references": [...]}`` — ``references`` tem **no máximo 1** elemento
-        (o desta linha); a união entre linhas do mesmo nó é
-        :func:`reduce_archetypes_by_node`.
-    """
-    return {
-        "labels": sorted(node.labels),
-        "entity": "node",
-        "properties": _entity_properties(node),
-        "references": _references(relationship, target_labels),
+    new_dict = {
+        "type": relationship.type,
+        "refsTo": list(target_labels),
+        "entity": "relationship",
+        "properties": _entity_properties(relationship),
     }
-
-
-def _entity_properties(entity: _NodeLike | _RelationshipLike) -> dict[str, Any]:
-    """Porte de ``IdArchetypeMapping.addProperties`` (``:70-82``), sem a montagem de texto.
-
-    ``Node``/``Relationship`` do driver não são ``dict`` de verdade (só
-    ``Mapping``); ``.keys()`` explícito espelha ``entity.keys()`` do Java.
-    """
-    return {key: obtain_type(entity[key]) for key in entity.keys()}  # noqa: SIM118
+    return new_dict
 
 
 def _references(
@@ -367,146 +283,151 @@ def _references(
 ) -> list[dict[str, Any]]:
     if relationship is None or target_labels is None:
         return []
-    return [_relationship_archetype(relationship, target_labels)]
+    else:
+        return [_relationship_archetype(relationship, target_labels)]
 
 
-def _relationship_archetype(
-    relationship: _RelationshipLike, target_labels: list[str]
+def node_archetype(
+    node: _NodeLike, relationship: _RelationshipLike | None, target_labels: list[str] | None
 ) -> dict[str, Any]:
-    """Arquétipo de um relacionamento isolado.
+    """Montar o arquétipo de uma linha (nó + no máximo uma referência de saída).
 
-    Porte do ramo com aresta de ``IdArchetypeMapping.addRelationships``
-    (``IdArchetypeMapping.java:96-109``). ``refsTo`` **não** é ordenado — usa a
-    ordem crua de ``target_labels`` (``labels(m)`` do Cypher), diferente dos
-    labels próprios do nó em :func:`node_archetype`. Ver "Uma assimetria do
-    oráculo a preservar" no docstring do módulo.
+    Porte de ``IdArchetypeMapping.nodeToJSONObject``/``addProperties``/
+    ``addRelationships``. Uma linha do cypher (ver o cabeçalho do módulo) traz
+    um nó e, opcionalmente, um relacionamento de saída com seu nó-alvo; esta
+    função monta o ``dict`` que representa essa combinação.
+
+    Parameters
+    ----------
+    node : _NodeLike
+        O nó da linha (sempre presente).
+    relationship : _RelationshipLike or None
+        O relacionamento de saída, se houver (``OPTIONAL MATCH`` pode devolver
+        ``None``).
+    target_labels : list of str or None
+        Labels do nó-alvo do relacionamento, ou ``None`` junto com
+        ``relationship=None``.
+
+    Returns
+    -------
+    dict of str to Any
+        Com as chaves ``labels`` (ordenados — ver o cabeçalho do módulo, "Uma
+        assimetria do oráculo a preservar"), ``entity``, ``properties`` e
+        ``references``.
     """
-    return {
-        "type": relationship.type,
-        "refsTo": list(target_labels),
-        "entity": "relationship",
-        "properties": _entity_properties(relationship),
+    new_dict = {
+        "labels": sorted(node.labels),
+        "entity": "node",
+        "properties": _entity_properties(node),
+        "references": _references(relationship, target_labels),
     }
+
+    return new_dict
 
 
 def _canonical_key(value: Mapping[str, Any]) -> str:
-    """Chave de agrupamento estrutural — mesmo mecanismo de ``extractors.mongo``.
-
-    Aqui faz o papel do texto exato que ``.countByValue()`` compara no Java;
-    como este porte nunca serializa de verdade (ver docstring do módulo), a
-    "string exata" vira esta chave canônica.
-    """
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
 def reduce_archetypes_by_node(
     rows: Iterable[tuple[str, dict[str, Any]]],
 ) -> dict[str, dict[str, Any]]:
-    """Fundir os arquétipos de linha por nó — união das referências distintas.
+    """Fundir as linhas de um mesmo nó num único arquétipo, unindo referências distintas.
 
-    Porte de ``ReduceByIdArchetype.call`` (``ReduceByIdArchetype.java:16-23``),
-    aplicado sobre **todas** as linhas de uma vez (o Java faz isso incremental
-    via ``reduceByKey`` do Spark; o resultado final é o mesmo — a combinação é
-    comutativa e associativa, mesma garantia já usada em
-    ``extractors.mongo.reduce_pairs``). ``labels``/``entity``/``properties``
-    vêm do **primeiro** arquétipo de cada nó (idênticos em toda linha do mesmo
-    nó — o Cypher refaz o ``MATCH`` do nó a cada linha); só ``references``
-    muda, por deduplicação estrutural (:func:`_canonical_key`, equivalente ao
-    ``TreeSet`` do Java).
+    Porte de ``ReduceByIdArchetype``. Cada linha de :func:`node_archetype` traz
+    no máximo uma referência de saída; nós com várias arestas de saída viram
+    várias linhas com o mesmo ``node_id``. Esta função funde essas linhas,
+    mantendo os campos do nó (do primeiro arquétipo visto) e acumulando
+    referências únicas (por chave canônica) na lista ``references``.
 
     Parameters
     ----------
-    rows : iterable of (str, dict)
-        Pares ``(id do nó, arquétipo da linha)`` — id é qualquer valor estável
-        por nó dentro da mesma leitura (este porte usa ``node.element_id``,
-        não ``node.id`` — descontinuado no driver 6.x; não muda o resultado,
-        só a implementação da chave interna de fusão).
+    rows : iterable of (str, dict of str to Any)
+        Pares ``(node_id, archetype)`` — tipicamente ``element_id`` do nó e o
+        resultado de :func:`node_archetype`.
 
     Returns
     -------
-    dict of str to dict
-        Um arquétipo por nó, com ``references`` já unidas.
+    dict of str to dict of str to Any
+        Um arquétipo fundido por ``node_id``.
     """
     merged: dict[str, dict[str, Any]] = {}
     seen_reference_keys: dict[str, dict[str, dict[str, Any]]] = {}
-
     for node_id, archetype in rows:
         if node_id not in merged:
             merged[node_id] = {**archetype, "references": []}
             seen_reference_keys[node_id] = {}
-
-        references_by_key = seen_reference_keys[node_id]
         for reference in archetype["references"]:
             key = _canonical_key(reference)
-            if key not in references_by_key:
-                references_by_key[key] = reference
+            if key not in seen_reference_keys[node_id]:
+                seen_reference_keys[node_id][key] = reference
                 merged[node_id]["references"].append(reference)
-
     return merged
-
-
-def build_archetype_counts(merged: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Explodir cada nó em (nó completo + cada referência distinta) e contar.
-
-    Porte de ``SplitMapping.call`` (``SplitMapping.java:30-41``) seguido de
-    ``.countByValue()`` (``SparkProcess.java:99``). Duas famílias de arquétipo
-    coexistem na saída: **nó completo** (``entity: "node"``, conta variações
-    de ``EntityType``) e **referência isolada** (``entity: "relationship"``,
-    conta — por construção do ``references`` já deduplicado em
-    :func:`reduce_archetypes_by_node` — quantos **nós de origem distintos**
-    têm aquele relacionamento, não o total bruto de arestas).
-
-    Parameters
-    ----------
-    merged : mapping of str to mapping
-        Saída de :func:`reduce_archetypes_by_node`.
-
-    Returns
-    -------
-    list of dict of str to Any
-        Uma linha por arquétipo distinto (nó ou referência), no formato
-        ``{"archetype": {...}, "count": N}`` — a chave de agrupamento
-        (:func:`_canonical_key`) já não aparece na saída, só o efeito dela.
-    """
-    counts: dict[str, int] = {}
-    archetypes: dict[str, Mapping[str, Any]] = {}
-
-    for node_archetype_ in merged.values():
-        _tally(node_archetype_, counts, archetypes)
-        for reference in node_archetype_["references"]:
-            _tally(reference, counts, archetypes)
-
-    return [{"archetype": archetypes[key], "count": count} for key, count in counts.items()]
 
 
 def _tally(
     archetype: Mapping[str, Any], counts: dict[str, int], archetypes: dict[str, Mapping[str, Any]]
 ) -> None:
-    key = _canonical_key(archetype)
-    counts[key] = counts.get(key, 0) + 1
-    archetypes.setdefault(key, archetype)
+    canon_key = _canonical_key(archetype)
+    counts[canon_key] = counts.get(canon_key, 0) + 1
+    archetypes.setdefault(canon_key, archetype)
+
+
+def build_archetype_counts(merged: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Explodir cada nó fundido em si mesmo + suas referências, e contar ocorrências exatas.
+
+    Porte de ``SplitMapping.flatMap`` + ``.countByValue()``. Cada arquétipo de
+    nó fundido (de :func:`reduce_archetypes_by_node`) gera uma contagem para
+    si próprio (com ``references`` completo) e uma contagem separada para
+    cada referência distinta que ele carrega — replicando o
+    ``flatMap``/``countByValue`` do Spark sem o round-trip de texto (ver o
+    cabeçalho do módulo).
+
+    Parameters
+    ----------
+    merged : mapping of str to mapping of str to Any
+        Arquétipos fundidos por nó, como devolvidos por
+        :func:`reduce_archetypes_by_node`.
+
+    Returns
+    -------
+    list of dict of str to Any
+        Um item por valor distinto (nó completo ou referência), cada um com
+        as chaves ``archetype`` e ``count``.
+    """
+    counts: dict[str, int] = {}
+    archetypes: dict[str, Mapping[str, Any]] = {}
+
+    for archetype in merged.values():
+        _tally(archetype, counts, archetypes)
+        for reference in archetype["references"]:
+            _tally(reference, counts, archetypes)
+    return [{"archetype": archetypes[key], "count": count} for key, count in counts.items()]
 
 
 def extract_archetype_counts(
     rows: Iterable[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]],
 ) -> list[dict[str, Any]]:
-    """Pipeline completo de extração, dado um iterável de linhas já lidas.
+    """Encadear o pipeline puro completo: linhas cruas -> arquétipos por nó -> contagens.
 
-    Junta :func:`node_archetype` + :func:`reduce_archetypes_by_node` +
-    :func:`build_archetype_counts` — a contraparte, sem I/O, de
-    :func:`extract_database_archetype_counts`. Separado para ser testável sem
-    banco (mesmo papel que ``build_triples`` tem em ``extractors.mongo``).
+    Orquestra, em sequência, :func:`node_archetype`,
+    :func:`reduce_archetypes_by_node` e :func:`build_archetype_counts` — o
+    equivalente do ``.mapToPair().reduceByKey().flatMap().countByValue()`` de
+    ``SparkProcess.java`` (ver o cabeçalho do módulo). Não faz I/O; recebe as
+    linhas já lidas do banco (por :func:`extract_database_archetype_counts`,
+    ou diretamente em teste).
 
     Parameters
     ----------
-    rows : iterable of (Node-like, Relationship-like or None, list of str or None)
-        Uma tripla ``(n, r, labels(m))`` por linha do Cypher — ver
-        :func:`node_archetype`.
+    rows : iterable of (_NodeLike, _RelationshipLike or None, list of str or None)
+        Uma tupla ``(nó, relacionamento de saída, labels do alvo)`` por linha
+        do cypher — ``relationship``/``target_labels`` são ``None`` juntos
+        quando o nó não tem saída.
 
     Returns
     -------
     list of dict of str to Any
-        Ver :func:`build_archetype_counts`.
+        As contagens finais, no formato de :func:`build_archetype_counts`.
     """
     per_row = (
         (node.element_id, node_archetype(node, relationship, target_labels))
@@ -516,63 +437,9 @@ def extract_archetype_counts(
     return build_archetype_counts(merged)
 
 
-def extract_database_archetype_counts(
-    driver: Driver, database: str | None = None, sampling_rate: float = 1.0
-) -> list[dict[str, Any]]:
-    """Ler o banco via driver nativo e montar os arquétipos com contagem.
-
-    Porte de ``SparkProcess.process`` (``SparkProcess.java:50-75``) — duas
-    *cypher* (ver "Mecanismo do oráculo" no docstring do módulo), driver
-    nativo (``neo4j.Driver.execute_query``), não o conector Spark (ver
-    ``fase2_decisao_leitura_mongo_neo4j.md``). Pura-Python, mesma decisão do
-    Mongo (``todolist_fase2.md`` §2.0) — Spark, se entrar, é paralelizador
-    futuro sobre isto, não um requisito.
-
-    Parameters
-    ----------
-    driver : neo4j.Driver
-        Driver já conectado (``neo4j.GraphDatabase.driver(...)``); quem
-        abre/fecha é o chamador.
-    database : str, optional
-        Nome do banco (``None`` usa o banco padrão do driver — o oráculo lia
-        sempre o banco padrão ``neo4j``, pré multi-database).
-    sampling_rate : float, default 1.0
-        Porte de ``SparkProcess``'s ``samplingRate`` (``:41-48``,
-        ``IllegalArgumentException`` se fora de ``(0, 1]`` — aqui
-        ``ValueError``). O oráculo que gerou os XMIs de referência sempre
-        rodou com ``1.0`` (``Neo4j2USchemaMain.java:18``, ``SAMPLING_RATIO``).
-
-    Returns
-    -------
-    list of dict of str to Any
-        Ver :func:`build_archetype_counts`.
-
-    Raises
-    ------
-    ValueError
-        Se ``sampling_rate`` for ``<= 0`` ou ``> 1`` — porte de
-        ``SparkProcess.java:43``.
-    """
-    if sampling_rate <= 0 or sampling_rate > 1:
-        raise ValueError(f"Sampling rate <= 0 or > 1, Value: {sampling_rate}")
-
-    def _rows() -> Iterator[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]]:
-        for labels in _distinct_label_combinations(driver, database):
-            yield from _read_label_combination(driver, database, labels, sampling_rate)
-
-    return extract_archetype_counts(_rows())
-
-
 def _distinct_label_combinations(driver: Driver, database: str | None) -> list[list[str]]:
-    """Porte de ``generateLabelsMinMaxCountQuery``/``executeSimpleQuery``.
-
-    Chamada em ``SparkProcess.java:60``; definições em ``:102-105``
-    (a *query*) e ``:116-121`` (execução — ``.collect()``, sem *map*/*reduce*).
-    """
     result = driver.execute_query(
-        "MATCH (n) RETURN DISTINCT labels(n)",
-        database_=database,
-        routing_=RoutingControl.READ,
+        "MATCH (n) RETURN DISTINCT labels(n)", database_=database, routing_=RoutingControl.READ
     )
     return [list(record[0]) for record in result.records]
 
@@ -580,51 +447,56 @@ def _distinct_label_combinations(driver: Driver, database: str | None) -> list[l
 def _read_label_combination(
     driver: Driver, database: str | None, labels: list[str], sampling_rate: float
 ) -> Iterator[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]]:
-    r"""Porte de ``generateLabels``/``generateQuery``/``executeQuery``.
-
-    ``SparkProcess.java:83-90``/``:107-114``/``:92-100``.
-
-    O padrão de labels (``:\`Label1\`:\`Label2\```) monta igual ao
-    ``generateLabels`` — mesmos acentos graves, mesma ordem (a que veio da
-    primeira *query*, não reordenada aqui).
-
-    Lê em **streaming**, e não com ``driver.execute_query``
-    -------------------------------------------------------
-    O ``execute_query`` é *eager*: materializa a lista inteira antes de
-    devolver. Num tamanho grande do User Profiles isso são milhões de
-    registros, e o custo não é só memória — **é throughput**. Conforme a lista
-    cresce, o processo passa mais tempo alocando e menos drenando o socket; a
-    janela de recepção TCP fecha, e o servidor fica bloqueado esperando o
-    cliente ler. Medido em 08/08/2026, mesma *query* e mesmo servidor, sobre
-    200 mil registros:
-
-    ==============  ========  =================  ==========
-    consumo         tempo     taxa               memória
-    ==============  ========  =================  ==========
-    streaming       6,3s      31.549 rec/s       constante
-    ``execute_query``  39,6s  5.045 rec/s        424 MB
-    ==============  ========  =================  ==========
-
-    Com o servidor reportando ``rwnd_limited: 100,0%`` — ocioso, esperando o
-    nosso processo. É a causa real do que `bugs_originais.md` catalogou como
-    ``E1`` ("deleção massiva contamina a extração seguinte"): o gatilho não é a
-    deleção nem o servidor, é o **tamanho do resultado**, e por isso `small` e
-    `medium` sempre passavam enquanto `large`/`larger` colapsavam.
-
-    O gerador não muda o que é lido: mesmos registros, mesma ordem. Quem
-    consome (:func:`extract_archetype_counts`) já recebia um ``Iterator``.
-    """
     label_pattern = "".join(f":`{label}`" for label in labels)
     query = (
         f"MATCH (n{label_pattern}) WHERE size(labels(n)) = $n_labels "
-        "WITH n OPTIONAL MATCH (n)-[r]->(m) "
+        + "WITH n OPTIONAL MATCH (n)-[r]->(m) "
         + (f"WHERE rand() < {sampling_rate} " if sampling_rate != 1.0 else "")
         + "RETURN n, r, labels(m)"
     )
+
     with driver.session(database=database, default_access_mode=READ_ACCESS) as session:
         for record in session.run(query, n_labels=len(labels)):
-            yield (
-                record[0],
-                record[1],
-                list(record[2]) if record[2] is not None else None,
-            )
+            yield (record[0], record[1], list(record[2]) if record[2] is not None else None)
+
+
+def extract_database_archetype_counts(
+    driver: Driver, database: str | None = None, sampling_rate: float = 1.0
+) -> list[dict[str, Any]]:
+    """Ponto de entrada com I/O: rodar as duas cypher do oráculo e extrair as contagens.
+
+    Porte de ``SparkProcess.process`` (``:50-121``). Descobre as combinações de
+    labels existentes (:func:`_distinct_label_combinations`), lê as linhas de
+    cada combinação (:func:`_read_label_combination`) e alimenta
+    :func:`extract_archetype_counts`.
+
+    Parameters
+    ----------
+    driver : Driver
+        Driver Neo4j nativo já conectado.
+    database : str or None
+        Nome do banco, ou ``None`` para o banco default.
+    sampling_rate : float
+        Fração de relacionamentos de saída amostrados (``rand() < taxa`` no
+        ``WHERE``); ``1.0`` (default) desliga a amostragem — ver o cabeçalho
+        de :func:`_read_label_combination`.
+
+    Returns
+    -------
+    list of dict of str to Any
+        As contagens finais, no formato de :func:`build_archetype_counts`.
+
+    Raises
+    ------
+    ValueError
+        Se ``sampling_rate`` estiver fora de ``(0, 1]`` — mesma validação de
+        ``SparkProcess.java``.
+    """
+    if sampling_rate <= 0 or sampling_rate > 1:
+        raise ValueError(f"Sampling rate <= 0 or > 1, Value: {sampling_rate}")
+
+    def _rows() -> Iterator[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]]:
+        for label in _distinct_label_combinations(driver, database):
+            yield from _read_label_combination(driver, database, label, sampling_rate)
+
+    return extract_archetype_counts(_rows())
