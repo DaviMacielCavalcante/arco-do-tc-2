@@ -144,7 +144,7 @@ def reduce_pairs(first: tuple[int, int, int], second: tuple[int, int, int]) -> t
 
     Parameters
     ----------
-    tuple1, tuple2 : tuple of (int, int, int)
+    first, second : tuple of (int, int, int)
         Duas triplas ``(firstTimestamp, lastTimestamp, count)`` do mesmo grupo.
 
     Returns
@@ -171,7 +171,7 @@ def simplify(document: Mapping[str, Any]) -> dict[str, Any]:
 
     Parameters
     ----------
-    mongo_document : dict of str to Any
+    document : dict of str to Any
         Um documento cru do MongoDB (já como ``dict`` Python, vindo do
         ``pymongo``).
 
@@ -232,7 +232,7 @@ def _simplify_value(simple_doc: Any) -> Any:
         return _SIMPLE_DEFAULT_DOUBLE
     elif isinstance(simple_doc, ObjectId):
         return SIMPLE_DEFAULT_OBJECTID.copy()
-    elif isinstance(simple_doc, dict):
+    elif isinstance(simple_doc, Mapping):
         # Documento aninhado: chave mantida como está, só o valor é
         # simplificado recursivamente — igual a
         # `simplified.put(key, simplify(doc.get(key)))` (Helpers.java:52).
@@ -309,7 +309,7 @@ def build_triples(
 
     Parameters
     ----------
-    collection_doc : Iterable of dict[str, Any]
+    documents : Iterable of Mapping[str, Any]
         Os documentos da coleção (tipicamente um cursor do ``pymongo``, por
         isso ``Iterable`` e não ``list`` — não exige materializar tudo antes).
     collection_name : str
@@ -364,9 +364,9 @@ def extract_database_triples(
 
     Parameters
     ----------
-    db : pymongo.database.Database
+    database : pymongo.database.Database
         Conexão já aberta com o banco.
-    names : Iterable of str
+    collections : Iterable of str
         Nomes das coleções a extrair.
 
     Returns
@@ -398,11 +398,11 @@ def extract_triples(
 
     Parameters
     ----------
-    db_name : str
-        Nome do banco de dados.
-    db_uri : str
+    database_uri : str
         URI de conexão do MongoDB.
-    db_collections : Iterable of str
+    database_name : str
+        Nome do banco de dados.
+    collections : Iterable of str
         Nomes das coleções a extrair.
 
     Returns

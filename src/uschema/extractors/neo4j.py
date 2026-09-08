@@ -145,11 +145,26 @@ _ANY_MARKER = "any"
 
 
 class _EntityLike(Protocol):
+    """Contrato estrutural comum a nós e relacionamentos do driver ``neo4j``.
+
+    Cobre só o que :func:`_entity_properties` precisa (nomes de propriedade e
+    acesso por chave) — ``Node``/``Relationship`` reais do driver satisfazem
+    isto, mas o Protocol evita depender das classes concretas do driver nos
+    tipos deste módulo.
+    """
+
     def keys(self) -> Iterator[str]: ...
     def __getitem__(self, key: str) -> Any: ...
 
 
 class _NodeLike(_EntityLike, Protocol):
+    """Contrato estrutural de um nó: ``_EntityLike`` mais identidade e labels.
+
+    ``element_id`` identifica o nó entre as várias linhas do cypher (usado
+    por :func:`reduce_archetypes_by_node` para agrupar); ``labels`` alimenta
+    o campo ``labels`` do arquétipo em :func:`node_archetype`.
+    """
+
     @property
     def element_id(self) -> str: ...
     @property
@@ -157,6 +172,12 @@ class _NodeLike(_EntityLike, Protocol):
 
 
 class _RelationshipLike(_EntityLike, Protocol):
+    """Contrato estrutural de um relacionamento: ``_EntityLike`` mais o tipo da aresta.
+
+    ``type`` é o nome do relacionamento Cypher (ex. ``"ACTED_IN"``), usado no
+    campo ``type`` do arquétipo montado por :func:`_relationship_archetype`.
+    """
+
     type: str
 
 
@@ -196,6 +217,25 @@ def obtain_type(value: Any) -> Any:
 
 
 def _list_sentinel(values: list[Any]) -> Any:
+    """Derivar a sentinela de uma lista de propriedade, ou ``_ANY_MARKER`` se heterogênea.
+
+    Parte de ``TypeUtils.obtainType`` pro ramo ``Iterable`` — ver o cabeçalho
+    do módulo, "Uma armadilha de tradução" (o ``type()`` entra na chave de
+    deduplicação porque ``False == 0`` em Python confundiria ``[True, 5]``
+    com uma lista homogênea de inteiros).
+
+    Parameters
+    ----------
+    values : list of Any
+        Os elementos crus da propriedade de lista.
+
+    Returns
+    -------
+    Any
+        A sentinela do tipo único, se todos os elementos convergirem pro
+        mesmo ``(type, valor)``; caso contrário, ``_ANY_MARKER`` (inclui
+        lista vazia — zero tipos distintos).
+    """
     new_dict: dict[tuple[type[Any], Any], Any] = {}
     for element in values:
         result = obtain_type(element)
@@ -209,6 +249,22 @@ def _list_sentinel(values: list[Any]) -> Any:
 
 
 def _hashable(sentinel: Any) -> Any:
+    """Trocar uma sentinela por algo hasheável, pra uso como chave de deduplicação.
+
+    ``list`` não é hasheável em Python (ao contrário do que a chave de
+    :func:`_list_sentinel` precisa); listas viram ``tuple`` recursivamente,
+    todo o resto passa direto.
+
+    Parameters
+    ----------
+    sentinel : Any
+        Uma sentinela devolvida por :func:`obtain_type` (escalar ou lista).
+
+    Returns
+    -------
+    Any
+        A mesma sentinela, com qualquer ``list`` aninhada trocada por ``tuple``.
+    """
     if isinstance(sentinel, list):
         return tuple(_hashable(element) for element in sentinel)
     else:
@@ -216,6 +272,25 @@ def _hashable(sentinel: Any) -> Any:
 
 
 def _simple_type_name(sentinel: Any) -> str:
+    """Nomear o tipo de uma sentinela escalar (nunca lista).
+
+    Porte de ``TypeUtils.geetSimpleType`` (nome com o typo do original) — o
+    despacho escalar usado tanto direto por :func:`get_type_name` quanto,
+    recursivamente, pro primeiro elemento de uma lista não-vazia. ``bool``
+    antes de ``int`` pela mesma razão de sempre (subclasse em Python).
+
+    Parameters
+    ----------
+    sentinel : Any
+        Uma sentinela escalar (nunca uma ``list`` — quem despacha listas é
+        :func:`get_type_name`).
+
+    Returns
+    -------
+    str
+        ``"boolean"``, ``"string"``, ``"double"``, ``"integer"``, ou
+        ``_ANY_MARKER`` se o tipo não for nenhum desses.
+    """
     if isinstance(sentinel, bool):
         return "boolean"
     elif isinstance(sentinel, str):
@@ -263,12 +338,50 @@ def get_type_name(sentinel: Any) -> str:
 
 
 def _entity_properties(entity: _RelationshipLike | _NodeLike) -> dict[str, Any]:
+    """Apagar todas as propriedades de um nó/relacionamento, trocando cada uma pela sua sentinela.
+
+    Porte de ``IdArchetypeMapping.addProperties``. Usa ``.keys()`` em vez de
+    iterar ``entity`` direto porque ``_EntityLike`` só declara ``.keys()``,
+    não ``__iter__`` (ver o comentário na chamada, `# noqa: SIM118`).
+
+    Parameters
+    ----------
+    entity : _RelationshipLike or _NodeLike
+        O nó ou relacionamento cujas propriedades serão apagadas.
+
+    Returns
+    -------
+    dict of str to Any
+        Uma chave por nome de propriedade, cada valor trocado pela sentinela
+        do seu tipo (:func:`obtain_type`).
+    """
     return {key: obtain_type(entity[key]) for key in entity.keys()}  # noqa: SIM118
 
 
 def _relationship_archetype(
     relationship: _RelationshipLike, target_labels: list[str]
 ) -> dict[str, Any]:
+    """Montar o arquétipo de um relacionamento de saída.
+
+    Porte de ``IdArchetypeMapping.addRelationships``. Ao contrário de
+    :func:`node_archetype`, **não** ordena ``target_labels`` — ver o
+    cabeçalho do módulo, "Uma assimetria do oráculo a preservar" (é uma
+    decisão de fidelidade ao bug ``N1`` do oráculo, não um descuido).
+
+    Parameters
+    ----------
+    relationship : _RelationshipLike
+        O relacionamento de saída.
+    target_labels : list of str
+        Labels do nó-alvo, na ordem crua devolvida por ``labels(m)`` (sem
+        ordenar).
+
+    Returns
+    -------
+    dict of str to Any
+        Com as chaves ``type``, ``refsTo``, ``entity`` (sempre
+        ``"relationship"``) e ``properties``.
+    """
     new_dict = {
         "type": relationship.type,
         "refsTo": list(target_labels),
@@ -281,6 +394,26 @@ def _relationship_archetype(
 def _references(
     relationship: _RelationshipLike | None, target_labels: list[str] | None
 ) -> list[dict[str, Any]]:
+    """Envolver o relacionamento de saída da linha numa lista de referências.
+
+    Uma linha do cypher tem no máximo uma referência de saída (ver o
+    cabeçalho do módulo); esta função normaliza isso pro formato de lista
+    que :func:`node_archetype`/:func:`reduce_archetypes_by_node` esperam no
+    campo ``references``.
+
+    Parameters
+    ----------
+    relationship : _RelationshipLike or None
+        O relacionamento de saída, ou ``None`` se o nó não tiver saída.
+    target_labels : list of str or None
+        Labels do nó-alvo, ou ``None`` junto com ``relationship=None``.
+
+    Returns
+    -------
+    list of dict of str to Any
+        Lista vazia se não houver relacionamento; caso contrário, uma lista
+        com um único item — o arquétipo de :func:`_relationship_archetype`.
+    """
     if relationship is None or target_labels is None:
         return []
     else:
@@ -368,6 +501,23 @@ def reduce_archetypes_by_node(
 def _tally(
     archetype: Mapping[str, Any], counts: dict[str, int], archetypes: dict[str, Mapping[str, Any]]
 ) -> None:
+    """Contabilizar uma ocorrência de um arquétipo (nó ou referência) por chave canônica.
+
+    Parte de :func:`build_archetype_counts`, equivalente a um passo do
+    ``.countByValue()`` do Spark: incrementa a contagem da chave e guarda a
+    primeira instância vista do arquétipo (todas as instâncias com a mesma
+    chave canônica são estruturalmente idênticas, então a primeira serve
+    pra representar o grupo). Muta ``counts``/``archetypes`` in-place.
+
+    Parameters
+    ----------
+    archetype : mapping of str to Any
+        O arquétipo (nó completo ou referência) a contabilizar.
+    counts : dict of str to int
+        Contagem acumulada por chave canônica; atualizado in-place.
+    archetypes : dict of str to mapping of str to Any
+        Primeira instância vista por chave canônica; atualizado in-place.
+    """
     canon_key = _canonical_key(archetype)
     counts[canon_key] = counts.get(canon_key, 0) + 1
     archetypes.setdefault(canon_key, archetype)
@@ -438,6 +588,23 @@ def extract_archetype_counts(
 
 
 def _distinct_label_combinations(driver: Driver, database: str | None) -> list[list[str]]:
+    """Rodar a 1ª cypher do oráculo: listar as combinações de labels existentes no banco.
+
+    Porte de ``MATCH (n) RETURN DISTINCT labels(n)`` (``SparkProcess.java:102-105``)
+    — ver o cabeçalho do módulo, "Mecanismo do oráculo".
+
+    Parameters
+    ----------
+    driver : Driver
+        Driver Neo4j nativo já conectado.
+    database : str or None
+        Nome do banco, ou ``None`` para o banco default.
+
+    Returns
+    -------
+    list of list of str
+        Uma lista de labels por combinação distinta encontrada.
+    """
     result = driver.execute_query(
         "MATCH (n) RETURN DISTINCT labels(n)", database_=database, routing_=RoutingControl.READ
     )
@@ -447,6 +614,35 @@ def _distinct_label_combinations(driver: Driver, database: str | None) -> list[l
 def _read_label_combination(
     driver: Driver, database: str | None, labels: list[str], sampling_rate: float
 ) -> Iterator[tuple[_NodeLike, _RelationshipLike | None, list[str] | None]]:
+    """Rodar a 2ª cypher do oráculo: ler as linhas de uma combinação de labels.
+
+    Cada linha traz um nó e, opcionalmente, uma aresta de saída. Porte de
+    ``MATCH (n:Labels) WHERE size(labels(n))=N WITH n OPTIONAL MATCH
+    (n)-[r]->(m) RETURN n, r, labels(m)`` (``SparkProcess.java:107-114``) —
+    ver o cabeçalho do módulo, "Mecanismo do oráculo". O ``OPTIONAL MATCH``
+    garante uma linha (com ``r``/``m`` nulos) mesmo pra nó sem saída;
+    ``sampling_rate`` entra como ``rand() < taxa`` no ``WHERE``, só quando
+    diferente de ``1.0``.
+
+    Parameters
+    ----------
+    driver : Driver
+        Driver Neo4j nativo já conectado.
+    database : str or None
+        Nome do banco, ou ``None`` para o banco default.
+    labels : list of str
+        A combinação de labels a filtrar (``size(labels(n)) == len(labels)``).
+    sampling_rate : float
+        Fração de relacionamentos de saída amostrados; ``1.0`` desliga a
+        amostragem (sem cláusula extra no ``WHERE``).
+
+    Yields
+    ------
+    tuple of (_NodeLike, _RelationshipLike or None, list of str or None)
+        Uma tupla ``(nó, relacionamento de saída, labels do alvo)`` por
+        linha do cypher; os dois últimos são ``None`` juntos quando o nó não
+        tem saída.
+    """
     label_pattern = "".join(f":`{label}`" for label in labels)
     query = (
         f"MATCH (n{label_pattern}) WHERE size(labels(n)) = $n_labels "
