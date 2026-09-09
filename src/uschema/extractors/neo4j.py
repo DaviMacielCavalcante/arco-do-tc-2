@@ -101,7 +101,7 @@ referência usa a ordem crua que ``labels(m)`` devolveu. Pra um nó
 multi-label que também é alvo de alguma relação, isso pode gerar **dois**
 ``EntityType`` nominalmente diferentes pro mesmo nó (um pela ordem "própria",
 outro pela ordem "de referência") — **confirmado com dado real** (Neo4j Aura,
-27/07/2026, via ``scripts/verificar_extracao_neo4j.py``): um nó ``:Zebra:Apple``
+27/07/2026, via ``scripts/check_extraction_neo4j.py``): um nó ``:Zebra:Apple``
 produziu ``Apple_AND_Zebra`` (variação real) e ``Zebra_AND_Apple`` (placeholder
 vazio) como dois ``EntityType`` distintos. Catalogado como ``N1`` em
 ``bugs_originais.md``. Este módulo **preserva a assimetria**
@@ -139,8 +139,15 @@ __all__ = [
     "reduce_archetypes_by_node",
 ]
 
+#: Sentinela pra tipo Cypher fora de LIST/BOOLEAN/STRING/FLOAT/INTEGER
+#: (``TypeUtils.java:47``, ``NULL``). É uma *string*, não ``None`` — sobrevive
+#: ao round-trip de JSON do oráculo como texto comum (ver docstring do módulo).
 _SENTINEL_OTHER = "null"
 
+#: Marcador de "tipos não convergem pra 1 só" numa lista
+#: (``TypeUtils.java:58``, ``ANY``) — usado só dentro de :func:`_list_sentinel`;
+#: nunca sobrevive como conceito distinto em :func:`get_type_name` (vira
+#: ``"string"`` pelo despacho por tipo Python, não por conteúdo — ver docstring).
 _ANY_MARKER = "any"
 
 
@@ -623,6 +630,30 @@ def _read_label_combination(
     garante uma linha (com ``r``/``m`` nulos) mesmo pra nó sem saída;
     ``sampling_rate`` entra como ``rand() < taxa`` no ``WHERE``, só quando
     diferente de ``1.0``.
+
+    Lê em **streaming**, e não com ``driver.execute_query``
+    ---------------------------------------------------------
+    ``execute_query`` é *eager*: materializa a lista inteira antes de
+    devolver. Num tamanho grande do User Profiles isso são milhões de
+    registros, e o custo não é só memória — é **throughput**. Conforme a
+    lista cresce, o processo passa mais tempo alocando e menos drenando o
+    socket; a janela de recepção TCP fecha, e o servidor fica bloqueado
+    esperando o cliente ler. Medido em 08/08/2026, mesma *query* e mesmo
+    servidor, sobre 200 mil registros:
+
+    ==================  =======  ==============  ========
+    consumo             tempo    taxa            memória
+    ==================  =======  ==============  ========
+    streaming           6,3s     31.549 rec/s    constante
+    ``execute_query``   39,6s    5.045 rec/s     424 MB
+    ==================  =======  ==============  ========
+
+    Com o servidor reportando ``rwnd_limited: 100,0%`` — ocioso, esperando o
+    nosso processo. É a causa real do que ``bugs_originais.md`` catalogou
+    como ``E1`` ("deleção massiva contamina a extração seguinte"): o gatilho
+    não é a deleção nem o servidor, é o **tamanho do resultado** — por isso
+    ``small``/``medium`` sempre passavam enquanto ``large``/``larger``
+    colapsavam.
 
     Parameters
     ----------

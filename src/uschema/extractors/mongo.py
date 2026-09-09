@@ -82,6 +82,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
@@ -218,7 +219,7 @@ def _simplify_value(simple_doc: Any) -> Any:
         Se o valor não for de nenhum tipo suportado — equivalente ao
         ``RuntimeException("Unsupported type: ...")`` do Java (``:56``).
     """
-    if isinstance(simple_doc, str):
+    if isinstance(simple_doc, str | datetime):
         return _SIMPLE_DEFAULT_STRING
     elif isinstance(simple_doc, bool):
         # bool antes de int: bool é subclasse de int em Python.
